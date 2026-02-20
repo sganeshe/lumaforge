@@ -1,0 +1,322 @@
+import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
+import CurvesEditor from './CurvesEditor';
+
+const Histogram = memo(({ imageSrc, exposure, contrast, whites, blacks, shadows, highlights }) => {
+    const canvasRef = useRef(null);
+    const [refresh, setRefresh] = useState(0);
+
+    useEffect(() => { 
+        const h = setTimeout(() => setRefresh(r => r + 1), 150); 
+        return () => clearTimeout(h); 
+    }, [exposure, contrast, whites, blacks, shadows, highlights]);
+
+    useEffect(() => {
+        if (!imageSrc || !canvasRef.current) return;
+        const img = new Image(); 
+        img.src = imageSrc;
+        
+        img.onload = () => {
+            const cvs = canvasRef.current; 
+            if(!cvs) return;
+            const ctx = cvs.getContext('2d');
+            const w = 250; const h = 100;
+            cvs.width = w; cvs.height = h;
+
+            ctx.drawImage(img, 0, 0, w, h);
+            const data = ctx.getImageData(0,0,w,h).data;
+            
+            const rH = new Array(256).fill(0);
+            const gH = new Array(256).fill(0);
+            const bH = new Array(256).fill(0);
+            
+            for(let i=0; i<data.length; i+=4) { 
+                rH[data[i]]++; gH[data[i+1]]++; bH[data[i+2]]++; 
+            }
+            
+            const max = Math.max(...rH, ...gH, ...bH) || 1;
+            
+            ctx.clearRect(0, 0, w, h); 
+            ctx.globalCompositeOperation = 'screen';
+            
+            const draw = (arr, c) => { 
+                ctx.fillStyle = c; 
+                ctx.beginPath(); 
+                ctx.moveTo(0, h); 
+                for(let i=0; i<256; i++){
+                    const val = (arr[i] + (arr[i-1]||arr[i]) + (arr[i+1]||arr[i])) / 3;
+                    ctx.lineTo((i/255)*w, h - (val/max)*h); 
+                } 
+                ctx.lineTo(w, h); 
+                ctx.fill(); 
+            };
+            
+            draw(rH, 'rgba(255, 50, 50, 0.6)'); 
+            draw(gH, 'rgba(50, 255, 50, 0.6)'); 
+            draw(bH, 'rgba(50, 80, 255, 0.6)');
+        };
+    }, [imageSrc, refresh]);
+
+    return (
+        <div className="histogram-wrapper" style={{marginBottom:24}}>
+            <div className="control-header" style={{margin:'10px 0 0 10px'}}>
+                <label>RGB SIGNALS</label>
+            </div>
+            <canvas ref={canvasRef} className="histogram-canvas"/>
+        </div>
+    );
+});
+
+const SmartSlider = memo(({ label, value, min, max, onChange, onSnapshot, def = 0, compact = false }) => {
+    const [localValue, setLocalValue] = useState(value);
+    const [isDragging, setIsDragging] = useState(false);
+    const lastUpdate = useRef(0);
+
+    useEffect(() => { 
+        if (!isDragging) setLocalValue(value); 
+    }, [value, isDragging]);
+
+    const handleMouseDown = () => { 
+        if (onSnapshot) onSnapshot();
+        setIsDragging(true); 
+    };
+
+    const handleChange = (e) => {
+        const newVal = parseFloat(e.target.value);
+        setLocalValue(newVal); 
+        
+        const now = Date.now();
+        if (now - lastUpdate.current > 30) { 
+            onChange(newVal); 
+            lastUpdate.current = now; 
+        }
+    };
+
+    const handleMouseUp = () => { 
+        setIsDragging(false); 
+        onChange(localValue);
+    };
+
+    return (
+        <div className={compact ? "" : "control-group"}>
+            <div className="control-header" style={compact ? {marginBottom:2, fontSize:9, color:'#666'} : {}}>
+                <label>{label}</label>
+                <span className="control-val" style={compact ? {fontSize:9} : {}}>{Math.round(localValue)}</span>
+            </div>
+            <input 
+                type="range" min={min} max={max} step={max > 10 ? 1 : 0.1} 
+                value={localValue} 
+                onMouseDown={handleMouseDown} 
+                onChange={handleChange} 
+                onMouseUp={handleMouseUp}
+                onDoubleClick={() => { 
+                    if(onSnapshot) onSnapshot(); 
+                    setLocalValue(def); 
+                    onChange(def); 
+                }}
+            />
+        </div>
+    );
+});
+
+const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
+    const [localHex, setLocalHex] = useState(value);
+    useEffect(() => { setLocalHex(value); }, [value]);
+    
+    return (
+        <input 
+            type="color" 
+            value={localHex} 
+            onClick={() => { if(onSnapshot) onSnapshot(); }} 
+            onChange={(e) => setLocalHex(e.target.value)} 
+            onBlur={(e) => onChange(e.target.value)} 
+            style={{width:40, height:40, border:'none', background:'none', cursor:'pointer', marginTop: 5}} 
+        />
+    );
+});
+
+const GradeControl = memo(({ label, tone, settings, setSettings, onSnapshot }) => {
+    const handleHex = useCallback((hex) => {
+        const r = parseInt(hex.slice(1,3),16)/255;
+        const g = parseInt(hex.slice(3,5),16)/255;
+        const b = parseInt(hex.slice(5,7),16)/255;
+        setSettings(p => ({
+            ...p, 
+            gradingHex: {...p.gradingHex, [tone]: hex}, 
+            grading: {...p.grading, [tone]: {r, g, b}}
+        }));
+    }, [setSettings, tone]);
+
+    return (
+        <div style={{marginBottom: 20}}>
+            <div className="control-header" style={{marginBottom:5}}><label>{label}</label></div>
+            <div style={{display:'flex', gap:15, alignItems:'flex-start', marginBottom:10}}>
+                <SmartColorPicker 
+                    value={settings.gradingHex?.[tone] || "#808080"} 
+                    onChange={handleHex} 
+                    onSnapshot={onSnapshot}
+                />
+                <div style={{flex:1}}>
+                    <SmartSlider 
+                        label="BLEND" compact={true} min={0} max={100} 
+                        value={settings.gradingBlend[tone]} 
+                        onChange={v => setSettings(p => ({...p, gradingBlend: {...p.gradingBlend, [tone]: v}}))} 
+                        onSnapshot={onSnapshot}
+                    />
+                    <div style={{height: 8}} /> 
+                    <SmartSlider 
+                        label="LUMA" compact={true} min={-100} max={100} 
+                        value={settings.gradingLum[tone]} 
+                        onChange={v => setSettings(p => ({...p, gradingLum: {...p.gradingLum, [tone]: v}}))} 
+                        onSnapshot={onSnapshot}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+});
+
+
+const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnapshot, onReset, image }) => {
+  
+  const update = useCallback((key, val) => setSettings(p => ({ ...p, [key]: val })), [setSettings]);
+
+  const applyAspect = useCallback((ratioName, ratioVal) => {
+      onSnapshot(); 
+      setSettings(prev => {
+          if (ratioName === 'FREE') return { ...prev, aspectRatio: 'FREE', cropApplied: false, crop: { ...prev.crop, aspect: null } };
+          
+          const imgRatio = prev.imageDimensions?.ratio || 1;
+          const targetRatio = ratioVal === 'ORIGINAL' ? imgRatio : ratioVal;
+          
+          let w = 60; 
+          let h = w / (targetRatio * (1/imgRatio));
+          if (h > 80) { h = 80; w = h * (targetRatio * (1/imgRatio)); }
+          
+          return { 
+              ...prev, 
+              aspectRatio: ratioName, 
+              cropApplied: false, 
+              crop: { x: 50-(w/2), y: 50-(h/2), width: w, height: h, aspect: targetRatio }
+          };
+      });
+  }, [setSettings, onSnapshot]);
+
+  return (
+    <div className="editor-controls">
+      <div className="tabs">
+        {['CROP', 'EDIT', 'COLOR', 'CURVES', 'FX', 'DATA'].map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={activeTab===tab?'active':''}>{tab}</button>
+        ))}
+      </div>
+
+      <div className="controls-scroll">
+        
+        {/* 1. CROP */}
+        {activeTab === 'CROP' && (
+           <div className="control-section">
+             <div className="panel-header">GEOMETRY</div>
+             <div className="btn-grid-2">
+                <button onClick={()=>{onSnapshot(); update('rotate', (settings.rotate-90)%360);}}>ROTATE L</button>
+                <button onClick={()=>{onSnapshot(); update('rotate', (settings.rotate+90)%360);}}>ROTATE R</button>
+                <button onClick={()=>{onSnapshot(); update('flipX', !settings.flipX);}}>FLIP X</button>
+                <button onClick={()=>{onSnapshot(); update('flipY', !settings.flipY);}}>FLIP Y</button>
+             </div>
+             <div className="divider"/><label className="control-header">ASPECT RATIO</label>
+             <div className="aspect-grid">
+                {['ORIGINAL','FREE','1:1','16:9','4:5','2:3'].map(r => (
+                    <button key={r} className={settings.aspectRatio===r?'active':''} 
+                        onClick={()=>applyAspect(r, r==='FREE'?null:(r==='ORIGINAL'?'ORIGINAL':eval(r.replace(':','/'))))}>{r}</button>
+                ))}
+             </div>
+             {settings.aspectRatio !== 'ORIGINAL' && (
+                <button className="primary-btn" style={{marginTop:20}} onClick={() => { onSnapshot(); setSettings(p => ({...p, cropApplied: !p.cropApplied})); }}>
+                   {settings.cropApplied ? "UNLOCK CROP" : "APPLY CROP"}
+                </button>
+             )}
+           </div>
+        )}
+
+        {/* 2. LIGHT */}
+        {activeTab === 'EDIT' && (
+          <div className="control-section">
+            <div className="panel-header">TONE MAPPING</div>
+            {['exposure','contrast','highlights','shadows','whites','blacks'].map(k => 
+                <SmartSlider key={k} label={k.toUpperCase()} value={settings[k]} 
+                    min={k==='exposure'? -5:-100} max={k==='exposure'?5:100} 
+                    onChange={v=>update(k,v)} onSnapshot={onSnapshot}
+                />
+            )}
+          </div>
+        )}
+
+        {/* 3. COLOR */}
+        {activeTab === 'COLOR' && (
+          <div className="control-section">
+            <div className="panel-header">BALANCE</div>
+            {['temp','tint','saturation','vibrance'].map(k => 
+                <SmartSlider key={k} label={k.toUpperCase()} value={settings[k]} min={-100} max={100} onChange={v=>update(k,v)} onSnapshot={onSnapshot}/>
+            )}
+            <div className="divider" />
+            <div className="panel-header">COLOR GRADING</div>
+            {['shadows','midtones','highlights'].map(t => 
+                <GradeControl key={t} label={t.toUpperCase()} tone={t} settings={settings} setSettings={setSettings} onSnapshot={onSnapshot}/>
+            )}
+          </div>
+        )}
+
+        {/* 4. CURVES */}
+        {activeTab === 'CURVES' && (
+          <div className="control-section">
+             <div className="panel-header">RGB CURVES</div>
+             <p style={{fontSize:10, color:'#666', marginBottom:20, fontFamily:'var(--font-ui)'}}>
+                Click to add point. Double-click to remove.
+             </p>
+             <CurvesEditor settings={settings} setSettings={setSettings} onSnapshot={onSnapshot} />
+          </div>
+        )}
+
+        {/* 5. FX */}
+        {activeTab === 'FX' && (
+          <div className="control-section">
+            <div className="panel-header">OPTICS</div>
+            {['sharpen','dehaze','vignette'].map(k => 
+                <SmartSlider key={k} label={k.toUpperCase().replace('SHARPEN','SHARPEN / BLUR')} value={settings[k]} min={-100} max={100} onChange={v=>update(k,v)} onSnapshot={onSnapshot}/>
+            )}
+            
+            <div className="divider" />
+            <div className="panel-header">FILM EMULATION</div>
+            {['grainAmount','grainSize','grainRoughness'].map(k => 
+                <SmartSlider key={k} label={k.replace('grain','').toUpperCase()} value={settings[k]} min={0} max={100} onChange={v=>update(k,v)} onSnapshot={onSnapshot}/>
+            )}
+            
+            <div className="divider" />
+            <div className="panel-header">BLOOM</div> 
+            <SmartSlider label="INTENSITY" value={settings.halationAmount} min={0} max={100} onChange={v=>update('halationAmount',v)} onSnapshot={onSnapshot}/>
+            <SmartSlider label="THRESHOLD" value={settings.halationThreshold} min={0} max={100} onChange={v=>update('halationThreshold',v)} onSnapshot={onSnapshot}/>
+          </div>
+        )}
+
+        {/* 6. DATA */}
+        {activeTab === 'DATA' && (
+           <div className="control-section">
+              <div className="panel-header">SYSTEM I/O</div>
+              <Histogram imageSrc={image} exposure={settings.exposure} contrast={settings.contrast} whites={settings.whites} blacks={settings.blacks} shadows={settings.shadows} highlights={settings.highlights}/>
+              
+              <div style={{marginTop: 20}}>
+                  <button onClick={() => update('watermark', !settings.watermark)} className={`btn-toggle ${settings.watermark?'active':''}`}>
+                      {settings.watermark ? 'WATERMARK: ON' : 'WATERMARK: OFF'}
+                  </button>
+              </div>
+           </div>
+        )}
+      </div>
+
+      {/* --- FOOTER ACTION BAR --- */}
+      <div className="action-bar">
+        <button className="btn-reset" onClick={onReset}>RESET ALL</button>
+      </div>
+    </div>
+  );
+};
+
+export default EditorControls;
