@@ -155,8 +155,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const grainRough = (settings.grainRoughness||50) / 100;
                 
                 // OPTIMIZATION: Only execute this heavy O(n) loop if strictly necessary
-                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowY !== 0 || highlightY !== 1 || 
-                                       scaleR !== 1 || offR !== 0 || JSON.stringify(sC.master).length > 45;
+                const needsPixelLoop = settings.activeLut || grainInt > 0 || (settings.shadows || 0) !== 0 || (settings.highlights || 0) !== 0 || scaleR !== 1 || offR !== 0 || JSON.stringify(sC.master).length > 45;
 
                 if (needsPixelLoop) {
                     for (let y = 0; y < h; y++) {
@@ -170,10 +169,37 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                 if (lP) { r = lP[0]; g = lP[1]; b = lP[2]; }
                             }
 
-                            // 2. Shadows/Highlights Math (Linear interpolation masking)
-                            const norm = r / 255; r = (norm < 0.5 ? shadowY + (norm / 0.5) * (0.5 - shadowY) : 0.5 + ((norm - 0.5) / 0.5) * (highlightY - 0.5)) * 255;
-                            const normG = g / 255; g = (normG < 0.5 ? shadowY + (normG / 0.5) * (0.5 - shadowY) : 0.5 + ((normG - 0.5) / 0.5) * (highlightY - 0.5)) * 255;
-                            const normB = b / 255; b = (normB < 0.5 ? shadowY + (normB / 0.5) * (0.5 - shadowY) : 0.5 + ((normB - 0.5) / 0.5) * (highlightY - 0.5)) * 255;
+                            // 2. Shadows/Highlights Math (Smooth Quadratic Roll-off)
+                            const shadowVal = (settings.shadows || 0) / 100;    
+                            const highlightVal = (settings.highlights || 0) / 100;
+
+                            const adjustTone = (channel) => {
+                                const norm = channel / 255;
+                                let out = norm;
+
+                                // If Shadows slider is moved
+                                if (shadowVal !== 0) {
+                                    // Only affect the bottom 50% of the histogram. 
+                                    // Math.pow gives a smooth curve so pure blacks stay black.
+                                    const shadowMask = Math.max(0, 1.0 - (norm / 0.5));
+                                    out += shadowVal * 0.5 * Math.pow(shadowMask, 2); 
+                                }
+
+                                // If Highlights slider is moved
+                                if (highlightVal !== 0) {
+                                    // Only affect the top 50% of the histogram.
+                                    const highlightMask = Math.max(0, (norm - 0.5) / 0.5);
+                                    // When reducing highlights (-), pull them down smoothly
+                                    // When boosting (+), push them up.
+                                    out += highlightVal * 0.5 * Math.pow(highlightMask, 2);
+                                }
+
+                                return clamp(out * 255);
+                            };
+
+                            r = adjustTone(r);
+                            g = adjustTone(g);
+                            b = adjustTone(b);
 
                             // 3. Curves & 3-Way Color Grading Injection
                             r = applyCurve(r, lutR) * scaleR + offR;

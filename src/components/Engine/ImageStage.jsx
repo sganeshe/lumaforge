@@ -113,14 +113,14 @@ const ImageStage = ({ imageSrc, settings, setSettings, activeTab }) => {
       next.y = Math.max(0, Math.min(100 - ch, cy + dy));
     } else {
       // Handle directional resizing (North, South, East, West)
-      if (dragMode.includes('E')) next.width = Math.min(100 - cx, Math.max(10, cw + dx));
+      if (dragMode.includes('D')) next.width = Math.min(100 - cx, Math.max(10, cw + dx));
       if (dragMode.includes('S')) next.height = Math.min(100 - cy, Math.max(10, ch + dy));
-      if (dragMode.includes('W')) { 
+      if (dragMode.includes('A')) { 
           const d = Math.min(Math.max(dx, -cx), cw - 10); 
           next.x = cx + d; 
           next.width = cw - d; 
       }
-      if (dragMode.includes('N')) { 
+      if (dragMode.includes('W')) { 
           const d = Math.min(Math.max(dy, -cy), ch - 10); 
           next.y = cy + d; 
           next.height = ch - d; 
