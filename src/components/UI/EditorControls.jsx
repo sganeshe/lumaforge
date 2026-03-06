@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
 import CurvesEditor from './CurvesEditor';
+import { HexColorPicker } from "react-colorful"; 
 
 const Histogram = memo(({ imageSrc, exposure, contrast, whites, blacks, shadows, highlights }) => {
     const canvasRef = useRef(null);
@@ -119,18 +120,74 @@ const SmartSlider = memo(({ label, value, min, max, onChange, onSnapshot, def = 
 });
 
 const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
-    const [localHex, setLocalHex] = useState(value);
-    useEffect(() => { setLocalHex(value); }, [value]);
-    
+    const [isOpen, setIsOpen] = useState(false);
+    const [localColor, setLocalColor] = useState(value); 
+    const popoverRef = useRef();
+
+    // Ensure the color stays synced if changed from outside, but NOT while we are dragging
+    useEffect(() => {
+        if (!isOpen) {
+            setLocalColor(value);
+        }
+    }, [value, isOpen]);
+
+    // Close the picker if the user clicks anywhere outside of it
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        if (isOpen) document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [isOpen]);
+
+    // Handled perfectly: Instantly updates local UI, seamlessly sends to parent engine
+    const handleLiveChange = (newColor) => {
+        setLocalColor(newColor); // The picker handle moves instantly
+        onChange(newColor);      // App.jsx gets the new color to process
+    };
+
     return (
-        <input 
-            type="color" 
-            value={localHex} 
-            onClick={() => { if(onSnapshot) onSnapshot(); }} 
-            onChange={(e) => setLocalHex(e.target.value)} 
-            onBlur={(e) => onChange(e.target.value)} 
-            style={{width:40, height:40, border:'none', background:'none', cursor:'pointer', marginTop: 5}} 
-        />
+        <div style={{ position: 'relative', marginTop: 5 }}>
+            <div 
+                style={{
+                    width: 40, 
+                    height: 40, 
+                    backgroundColor: localColor, 
+                    cursor: 'pointer', 
+                    borderRadius: '4px',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
+                }}
+                onClick={() => {
+                    if (!isOpen && onSnapshot) onSnapshot(); 
+                    setIsOpen(true);
+                }}
+            />
+
+            {isOpen && (
+                <div 
+                    ref={popoverRef}
+                    style={{ 
+                        position: 'absolute', 
+                        top: 50, 
+                        left: 0, 
+                        zIndex: 9999,
+                        background: '#1a1a1a',
+                        padding: '10px',
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.8)',
+                        border: '1px solid #333'
+                    }}
+                >
+                    <HexColorPicker 
+                        color={localColor} 
+                        onChange={handleLiveChange} 
+                    />
+                </div>
+            )}
+        </div>
     );
 });
 
@@ -174,7 +231,6 @@ const GradeControl = memo(({ label, tone, settings, setSettings, onSnapshot }) =
         </div>
     );
 });
-
 
 const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnapshot, onReset, image }) => {
   
