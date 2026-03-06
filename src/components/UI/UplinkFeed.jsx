@@ -6,24 +6,41 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
     const [loading, setLoading] = useState(true);
     const [pendingSettings, setPendingSettings] = useState(null);
     const fileInputRef = useRef(null);
+    
+    // NEW: Sorting State
+    const [sortBy, setSortBy] = useState('latest'); // 'latest', 'popular', 'oldest'
 
+    // Re-fetch whenever the sortBy state changes
     useEffect(() => {
-        fetchFeed();
-    }, []);
+        fetchFeed(sortBy);
+    }, [sortBy]);
 
-    const fetchFeed = async () => {
+    // NEW: Dynamic Supabase Query Builder
+    const fetchFeed = async (currentSort) => {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('uplink_posts')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(50);
+        
+        // Start building the query
+        let query = supabase.from('uplink_posts').select('*');
+
+        // Apply sorting math based on user selection
+        if (currentSort === 'popular') {
+            // Sort by likes first, then by date (so ties show newest first)
+            query = query.order('likes', { ascending: false }).order('created_at', { ascending: false });
+        } else if (currentSort === 'oldest') {
+            // Sort by date created (oldest first)
+            query = query.order('created_at', { ascending: true });
+        } else {
+            // Default: Sort by date created (newest first)
+            query = query.order('created_at', { ascending: false });
+        }
+
+        // Execute the query
+        const { data, error } = await query.limit(50);
         
         if (!error && data) setPosts(data);
         setLoading(false);
     };
 
-    // 1. NEW LIKE LOGIC: Tracks User IDs to prevent spamming
     const handleLike = async (post) => {
         if (!session) return alert("UPLINK ERROR: Login required to upvote.");
         
@@ -34,42 +51,37 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
         let newLikesCount = post.likes || 0;
 
         if (hasLiked) {
-            newLikedBy = newLikedBy.filter(id => id !== userId); // Remove like
+            newLikedBy = newLikedBy.filter(id => id !== userId); 
             newLikesCount = Math.max(0, newLikesCount - 1);
         } else {
-            newLikedBy = [...newLikedBy, userId]; // Add like
+            newLikedBy = [...newLikedBy, userId]; 
             newLikesCount += 1;
         }
 
-        // Instant UI update
         setPosts(posts.map(p => p.id === post.id ? { ...p, likes: newLikesCount, liked_by: newLikedBy } : p));
         
-        // Push to database
         await supabase
             .from('uplink_posts')
             .update({ likes: newLikesCount, liked_by: newLikedBy })
             .eq('id', post.id);
     };
 
-    // 2. FORK LOGIC: Save the settings and open the file picker
     const initiateFork = (settings) => {
         setPendingSettings(settings);
         fileInputRef.current.click();
     };
 
-    // 3. FORK LOGIC: Send the user's chosen file AND the settings back to App.jsx
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         
         onFork(pendingSettings, file);
         setPendingSettings(null);
-        e.target.value = null; // Reset input
+        e.target.value = null; 
     };
 
     return (
         <div className="terminal-page amber-theme">
-            {/* Hidden file input for Forking */}
             <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -84,6 +96,35 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
             </div>
 
             <div className="terminal-content" style={{ padding: '20px', paddingBottom: '100px', maxWidth: '1200px', margin: '0 auto' }}>
+                
+                {/* NEW: Filter UI Toolbar */}
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '1px solid #333', paddingBottom: '15px', alignItems: 'center' }}>
+                    <span style={{ color: '#666', fontSize: '12px', marginRight: '10px', fontFamily: 'var(--font-mono)' }}>SORT DATA STREAM:</span>
+                    
+                    {['latest', 'popular', 'oldest'].map(mode => (
+                        <button
+                            key={mode}
+                            onClick={() => setSortBy(mode)}
+                            style={{
+                                background: sortBy === mode ? 'var(--amber)' : 'transparent',
+                                color: sortBy === mode ? '#000' : '#888',
+                                border: `1px solid ${sortBy === mode ? 'var(--amber)' : '#444'}`,
+                                padding: '6px 14px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                                fontFamily: 'var(--font-mono)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '1px',
+                                transition: 'all 0.2s',
+                                fontWeight: sortBy === mode ? 'bold' : 'normal'
+                            }}
+                        >
+                            {mode}
+                        </button>
+                    ))}
+                </div>
+
                 {loading ? (
                     <div className="typewriter-text">SYNCING WITH GLOBAL MAINFRAME...</div>
                 ) : (
@@ -101,7 +142,6 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                                             style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                                         />
                                         
-                                        {/* FIXED FORK BUTTON UI */}
                                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', opacity: 0, transition: 'opacity 0.2s', cursor: 'pointer' }}
                                              onMouseEnter={e => e.currentTarget.style.opacity = 1}
                                              onMouseLeave={e => e.currentTarget.style.opacity = 0}
