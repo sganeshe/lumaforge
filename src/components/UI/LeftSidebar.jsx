@@ -11,7 +11,8 @@ export const LeftSidebar = ({
     session, 
     setShowAuth, 
     currentSettings,
-    onSaveToCloud
+    onSaveToCloud,
+    imageSrc
 }) => {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(false);
