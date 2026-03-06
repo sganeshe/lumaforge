@@ -107,8 +107,8 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                             onClick={() => setSortBy(mode)}
                             style={{
                                 background: sortBy === mode ? 'var(--amber)' : 'transparent',
-                                color: sortBy === mode ? '#ff6666' : '#888',
-                                border: `1px solid ${sortBy === mode ? 'var(--amber)' : '#ff6666'}`,
+                                color: '#ffb000',
+                                border: `1px solid ${sortBy === mode ? 'var(--amber)' : '#ffb000'}`,
                                 padding: '6px 14px',
                                 borderRadius: '4px',
                                 fontSize: '11px',
