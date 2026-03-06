@@ -20,6 +20,7 @@ import { CloudMenu } from './components/UI/AuthSystem';
 import { ManualScreen } from './components/UI/ManualScreen';
 import { DiagnosticsScreen } from './components/UI/DiagnosticsScreen';
 import { LoginScreen } from './components/UI/LoginScreen';
+import { UplinkFeed } from './components/UI/UplinkFeed';
 
 // Utilities, Hooks & Services
 import { supabase } from './lib/supabaseClient'; 
@@ -73,6 +74,7 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
         <input id="home-upload" type="file" hidden onChange={onUpload} accept="image/*,.cube" />
 
         <div style={{ display: 'flex', gap: '20px', marginTop: '30px', animation: 'fade-up 1s ease-out 0.6s backwards' }}>
+            <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_UPLINK')}>[ THE UPLINK FEED ]</button>
             <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_DIAGNOSTICS')}>[ SYSTEM DIAGNOSTICS ]</button>
             <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_MANUAL')}>[ OPTICS MANUAL ]</button>
         </div>
@@ -105,7 +107,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('EDIT');
   const [settings, setSettings] = useState(getFreshState());
   
-  // LIVE UPDATE FIX: Deferred settings for heavy canvas
   const deferredSettings = useDeferredValue(settings);
   
   const [history, setHistory] = useState({ past: [], future: [] });
@@ -277,23 +278,47 @@ export default function App() {
 
   const handleDiagnosticsSignIn = () => setView('BOOT_TO_LOGIN');
 
+  // <-- UPLINK ADDITION: Forking logic
+  const handleForkFromUplink = (forkedSettings, sourceImageUrl) => {
+      setSettings({ 
+          ...getFreshState(), 
+          ...forkedSettings, 
+          imageDimensions: forkedSettings.imageDimensions 
+      });
+      setImage(sourceImageUrl); 
+      setHistory({ past: [], future: [] }); 
+      setUiKey(prev => prev + 1); 
+      setView('BOOT_TO_EDITOR');
+  };
+
   return (
     <>
       {!appPrefs.animations && (
           <style>{`* { animation: none !important; transition: none !important; }`}</style>
       )}
 
+      {/* NEW UPLINK BOOT ROUTE */}
       {view === 'BOOT' && <BootScreen onComplete={() => setView('HOME')} />}
       {view === 'BOOT_TO_HOME' && <BootScreen onComplete={() => setView('HOME')} />}
       {view === 'BOOT_TO_EDITOR' && <BootScreen onComplete={() => setView('EDITOR')} />}
       {view === 'BOOT_TO_MANUAL' && <BootScreen onComplete={() => setView('MANUAL')} />}
       {view === 'BOOT_TO_DIAGNOSTICS' && <BootScreen onComplete={() => setView('DIAGNOSTICS')} />}
       {view === 'BOOT_TO_LOGIN' && <BootScreen onComplete={() => setView('LOGIN')} />}
-      
+      {view === 'BOOT_TO_UPLINK' && <BootScreen onComplete={() => setView('UPLINK')} />} 
+
       {view === 'HOME' && <HomeScreen onUpload={handleUpload} onNavigate={setView} />}
       {view === 'MANUAL' && <ManualScreen onBack={() => setView('BOOT_TO_HOME')} />}
       {view === 'LOGIN' && <LoginScreen onBack={handleAbortLogin} />}
       
+      {/* NEW UPLINK COMPONENT RENDER */}
+      {view === 'UPLINK' && (
+          <UplinkFeed 
+              session={session} 
+              onBack={() => setView('BOOT_TO_HOME')} 
+              onFork={handleForkFromUplink} 
+          />
+      )}
+
       {view === 'DIAGNOSTICS' && (
           <DiagnosticsScreen onBack={() => setView('BOOT_TO_HOME')} session={session} appPrefs={appPrefs} setAppPrefs={setAppPrefs} onSignIn={handleDiagnosticsSignIn}/>
       )}
@@ -312,7 +337,6 @@ export default function App() {
           <div className="canvas-area" key={`stage-${uiKey}`}>
             <div style={{position:'absolute', inset:0, opacity:0.3, pointerEvents:'none', backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '80px 80px'}}/>
             
-            {/* THIS IS THE CRITICAL LINE: Using deferredSettings so the canvas doesn't lock the UI */}
             <ImageStage imageSrc={image} settings={deferredSettings} setSettings={setSettings} activeTab={activeTab} />
             
             <div className="canvas-hud">
@@ -329,7 +353,6 @@ export default function App() {
             </div>
           </div>
           
-          {/* Controls get instant settings so they never lag */}
           <EditorControls 
             key={`controls-${uiKey}`} activeTab={activeTab} setActiveTab={setActiveTab} settings={settings} setSettings={setSettings}
             onSnapshot={pushToHistory} onReset={() => { pushToHistory(); setSettings({...getFreshState(), imageDimensions: settings.imageDimensions}); setUiKey(k => k + 1); }} 

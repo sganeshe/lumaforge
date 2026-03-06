@@ -41,6 +41,66 @@ export const LeftSidebar = ({
         }
     };
 
+    // <-- UPLINK ADDITION: Publish logic
+    const handlePublishToUplink = async () => {
+        if (!session) {
+            setShowAuth();
+            return;
+        }
+        
+        const presetName = prompt("NAME YOUR PRESET FOR THE UPLINK:");
+        if (!presetName) return;
+
+        alert("INITIATING UPLINK UPLOAD. PLEASE WAIT...");
+
+        try {
+            // NOTE: We need to get the canvas image as a Blob.
+            // This assumes your canvas has an ID of 'luma-stage-canvas'. 
+            // If your canvas ID is different, update the document.getElementById query below!
+            const canvas = document.getElementById('luma-stage-canvas'); 
+            
+            if (!canvas) {
+                alert("SYSTEM ERROR: Cannot locate active canvas for export.");
+                return;
+            }
+
+            canvas.toBlob(async (blob) => {
+                if (!blob) throw new Error("Failed to generate image buffer.");
+
+                const fileName = `uplink_${session.user.id}_${Date.now()}.png`;
+
+                // Upload to Supabase Storage
+                const { error: uploadError } = await supabase.storage
+                    .from('uplink_images')
+                    .upload(fileName, blob, { contentType: 'image/png' });
+
+                if (uploadError) throw uploadError;
+
+                // Get public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('uplink_images')
+                    .getPublicUrl(fileName);
+
+                // Save to database
+                const { error: dbError } = await supabase
+                    .from('uplink_posts')
+                    .insert([{
+                        user_id: session.user.id,
+                        author_name: session.user.email.split('@')[0], 
+                        preset_name: presetName,
+                        image_url: publicUrl,
+                        settings: currentSettings 
+                    }]);
+
+                if (dbError) throw dbError;
+                alert("UPLOAD COMPLETE. PRESET IS LIVE ON THE UPLINK.");
+            }, 'image/png');
+
+        } catch (err) {
+            alert("UPLOAD FAILED: " + err.message);
+        }
+    };
+
     return (
         <div className="left-sidebar">
             
@@ -71,11 +131,19 @@ export const LeftSidebar = ({
                         {!session ? (
                             <div className="empty-state">
                                 <p>OFFLINE MODE</p>
-                                <button onClick={onLoginClick} className="accent-btn">CONNECT UPLINK</button>
+                                <button onClick={setShowAuth} className="accent-btn">CONNECT UPLINK</button>
                             </div>
                         ) : (
                             <>
-                                <button onClick={onSaveToCloud} className="new-preset-btn">+ SAVE LOOK</button>
+                                <button onClick={onSaveToCloud} className="new-preset-btn">+ SAVE LOOK (PRIVATE)</button>
+                                
+                                {/* UPLINK ADDITION: Publish button */}
+                                <button onClick={handlePublishToUplink} className="new-preset-btn" style={{marginTop: '10px', background: 'var(--amber)', color: '#000'}}>
+                                    ↑ PUBLISH TO UPLINK
+                                </button>
+                                
+                                <div style={{height: '20px'}}></div>
+
                                 {loading ? <div className="loading-text">SYNCING...</div> : 
                                     projects.map(p => (
                                         <div key={p.id} className="preset-item" onClick={() => onLoadPreset(p.settings)}>
