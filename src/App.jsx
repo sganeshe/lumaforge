@@ -329,7 +329,7 @@ export default function App() {
           <LeftSidebar 
             onHome={handleGoHome} onExportImage={() => exportImage(image, settings)} onExportCube={saveCube} onLoadPreset={handleCloudLoad}
             onImportFile={() => fileInputRef.current.click()} onSaveToCloud={handleSaveToCloud} session={session} setShowAuth={() => setView('BOOT_TO_LOGIN')}
-            currentSettings={settings}
+            currentSettings={settings} imageSrc={image}
           />
 
           <input ref={fileInputRef} type="file" hidden accept="image/*,.cube" onChange={handleUpload} onClick={(e) => e.target.value = null} />

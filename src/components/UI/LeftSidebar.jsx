@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { generateExportBlob } from '../Engine/ExportSystem';
 
 export const LeftSidebar = ({ 
     onHome, 
@@ -48,55 +49,50 @@ export const LeftSidebar = ({
             return;
         }
         
+        if (!imageSrc) {
+            alert("SYSTEM ERROR: No active image to publish.");
+            return;
+        }
+
         const presetName = prompt("NAME YOUR PRESET FOR THE UPLINK:");
         if (!presetName) return;
 
         alert("INITIATING UPLINK UPLOAD. PLEASE WAIT...");
 
         try {
-            // NOTE: We need to get the canvas image as a Blob.
-            // This assumes your canvas has an ID of 'luma-stage-canvas'. 
-            // If your canvas ID is different, update the document.getElementById query below!
-            const canvas = document.querySelector('.canvas-area canvas'); 
-            
-            if (!canvas) {
-                alert("SYSTEM ERROR: Cannot locate active canvas for export.");
-                return;
-            }
+            // 1. Generate the high-res Blob using your pro export pipeline!
+            const blob = await generateExportBlob(imageSrc, currentSettings);
 
-            canvas.toBlob(async (blob) => {
-                if (!blob) throw new Error("Failed to generate image buffer.");
+            const fileName = `uplink_${session.user.id}_${Date.now()}.png`;
 
-                const fileName = `uplink_${session.user.id}_${Date.now()}.png`;
+            // 2. Upload to Supabase Storage
+            const { error: uploadError } = await supabase.storage
+                .from('uplink_images')
+                .upload(fileName, blob, { contentType: 'image/png' });
 
-                // Upload to Supabase Storage
-                const { error: uploadError } = await supabase.storage
-                    .from('uplink_images')
-                    .upload(fileName, blob, { contentType: 'image/png' });
+            if (uploadError) throw uploadError;
 
-                if (uploadError) throw uploadError;
+            // 3. Get public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('uplink_images')
+                .getPublicUrl(fileName);
 
-                // Get public URL
-                const { data: { publicUrl } } = supabase.storage
-                    .from('uplink_images')
-                    .getPublicUrl(fileName);
+            // 4. Save to database
+            const { error: dbError } = await supabase
+                .from('uplink_posts')
+                .insert([{
+                    user_id: session.user.id,
+                    author_name: session.user.email.split('@')[0], 
+                    preset_name: presetName,
+                    image_url: publicUrl,
+                    settings: currentSettings 
+                }]);
 
-                // Save to database
-                const { error: dbError } = await supabase
-                    .from('uplink_posts')
-                    .insert([{
-                        user_id: session.user.id,
-                        author_name: session.user.email.split('@')[0], 
-                        preset_name: presetName,
-                        image_url: publicUrl,
-                        settings: currentSettings 
-                    }]);
-
-                if (dbError) throw dbError;
-                alert("UPLOAD COMPLETE. PRESET IS LIVE ON THE UPLINK.");
-            }, 'image/png');
+            if (dbError) throw dbError;
+            alert("UPLOAD COMPLETE. PRESET IS LIVE ON THE UPLINK.");
 
         } catch (err) {
+            console.error(err);
             alert("UPLOAD FAILED: " + err.message);
         }
     };
