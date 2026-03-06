@@ -3,27 +3,17 @@
  * @description The primary rendering engine for LUMAFORGE. Handles all destructive, 
  * pixel-level mathematical operations including convolutions, Look-Up Tables (LUTs), 
  * and procedural noise generation.
- * * @warning PERFORMANCE CRITICAL. The main pixel loop iterates 4 times per pixel 
- * (RGBA). For a 4K image, this is ~33 million iterations. Avoid adding function calls 
- * or instantiating objects inside the innermost 'for' loops.
+ * @warning PERFORMANCE CRITICAL. 
  */
 
 import { applyLutToPixel } from './LUTSystem';
 import { generateCurveLUT } from './CurvesMath';
 
-/**
- * Executes the full image processing pipeline.
- * * @param {string} imageSrc - The source URL or Blob URI of the image.
- * @param {Object} settings - The current state object containing all slider/curve values.
- * @param {number|null} maxDim - Optional maximum dimension (width or height) to downsample for performance.
- * @returns {Promise<HTMLCanvasElement>} Resolves with the rendered canvas element.
- */
 export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
     return new Promise((resolve, reject) => {
         const img = new Image();
         
-        // SECURITY & CORS: Only use crossOrigin if loading from an external server (Cloud). 
-        // Local Blob URLs will crash the canvas context if this is set to 'anonymous'.
+        // SECURITY & CORS
         if (imageSrc && imageSrc.startsWith('http')) {
             img.crossOrigin = "anonymous";
         }
@@ -35,24 +25,21 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 let w = img.naturalWidth;
                 let h = img.naturalHeight;
 
-                // DOWN-SAMPLING: Maintain aspect ratio while clamping to maxDim
+                // DOWN-SAMPLING
                 if (maxDim && (w > maxDim || h > maxDim)) {
                     const ratio = Math.min(maxDim / w, maxDim / h);
                     w = Math.floor(w * ratio);
                     h = Math.floor(h * ratio);
                 }
 
-                // Initialize Canvas Context with hardware acceleration hint
                 const canvas = document.createElement('canvas');
                 canvas.width = w;
                 canvas.height = h;
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                const resMult = Math.max(1, w / 2000); // Resolution multiplier for scaling effects (grain/blur)
+                const resMult = Math.max(1, w / 2000); 
 
                 /* =========================================================================
                    STAGE 1: HARDWARE-ACCELERATED BASE FILTERS
-                   Utilizes the browser's native CSS filter engine for basic transformations 
-                   before moving to expensive CPU pixel-level math.
                    ========================================================================= */
                 const whiteVal = (settings.whites || 0) / 5;
                 const blackVal = (settings.blacks || 0) / 5;
@@ -68,16 +55,13 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 `;
                 
                 ctx.drawImage(img, 0, 0, w, h);
-                ctx.filter = 'none'; // Reset to prevent bleeding into later passes
+                ctx.filter = 'none'; 
 
                 /* =========================================================================
                    STAGE 2: HALATION EMULATION
-                   Simulates light scattering past the anti-halation backing of analog film. 
-                   Isolates highlights, blurs them on a down-sampled buffer, and screens 
-                   them back over the main image. 
                    ========================================================================= */
                 if (settings.halationAmount > 0) {
-                    const bScale = 0.25; // Render bloom at 25% resolution for massive performance gain
+                    const bScale = 0.25; 
                     const bw = Math.floor(w * bScale), bh = Math.floor(h * bScale);
                     const bCvs = document.createElement('canvas');
                     bCvs.width = bw; bCvs.height = bh;
@@ -88,18 +72,16 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     const bd = bData.data;
                     const thresh = ((settings.halationThreshold||0) / 100) * 255;
                     
-                    // Highlight Isolation Pass
                     for (let i = 0; i < bd.length; i+=4) {
-                        const l = 0.299*bd[i] + 0.587*bd[i+1] + 0.114*bd[i+2]; // Standard Luma calculation
+                        const l = 0.299*bd[i] + 0.587*bd[i+1] + 0.114*bd[i+2]; 
                         if (l < thresh) { 
                             bd[i] = bd[i+1] = bd[i+2] = 0; 
                         } else { 
-                            bd[i] = Math.min(255, bd[i] * 1.15); // Add reddish-orange tint to bloom
+                            bd[i] = Math.min(255, bd[i] * 1.15); 
                         }
                     }
                     bCtx.putImageData(bData, 0, 0);
                     
-                    // Composite Screen Pass
                     ctx.save();
                     ctx.globalCompositeOperation = 'screen';
                     ctx.globalAlpha = settings.halationAmount / 100;
@@ -109,18 +91,15 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 }
 
                 /* =========================================================================
-                   STAGE 3: MAIN PIXEL LOOP (CURVES, LUTs, GRAIN, 3-WAY GRADING)
-                   
+                   STAGE 3: MAIN PIXEL LOOP
                    ========================================================================= */
                 const imgData = ctx.getImageData(0, 0, w, h);
                 const data = imgData.data;
 
-                // MATH HELPERS: Pre-compiled for speed inside the loop
                 const clamp = (val) => isNaN(val) ? 0 : Math.max(0, Math.min(255, Math.floor(val)));
                 const n = (val) => (val||0) / 100;
                 const nP = (val) => Math.max(0, (val||0) / 100);
 
-                // PRE-CALCULATE SPLINE LUTS: Avoids calculating cubic splines per-pixel
                 const sC = settings.curves || { master:[], red:[], green:[], blue:[] };
                 const lutM = generateCurveLUT(sC.master || [{x:0,y:0},{x:255,y:255}]);
                 const lutR = generateCurveLUT(sC.red || [{x:0,y:0},{x:255,y:255}]);
@@ -134,14 +113,10 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     return cVal === undefined ? mVal * 255 : cVal * 255;
                 };
 
-                // 3-WAY COLOR GRADING SETUP
-                const shadowY = 0.0 + ((settings.shadows||0) / 200);
-                const highlightY = 1.0 + ((settings.highlights||0) / 200);
-                
                 const getGrade = (t) => {
                   const c = settings.grading?.[t] || {r:0.5, g:0.5, b:0.5}; 
                   const l = n(settings.gradingLum?.[t] || 0); 
-                  const b = nP(settings.gradingBlend?.[t] || 100);
+                  const b = nP(settings.gradingBlend?.[t] !== undefined ? settings.gradingBlend[t] : 100);
                   return { r: (c.r-0.5)*b+l, g: (c.g-0.5)*b+l, b: (c.b-0.5)*b+l };
                 };
                 
@@ -149,13 +124,15 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const scaleR = 1 + gH.r + gM.r, scaleG = 1 + gH.g + gM.g, scaleB = 1 + gH.b + gM.b;
                 const offR = (gS.r + gM.r)*255, offG = (gS.g + gM.g)*255, offB = (gS.b + gM.b)*255;
 
-                // PROCEDURAL GRAIN SETUP
                 const grainInt = nP(settings.grainAmount) * 255; 
                 const grainScale = Math.max(1, Math.floor(Math.max(1, (settings.grainSize||50) / 5) * resMult));
                 const grainRough = (settings.grainRoughness||50) / 100;
                 
-                // OPTIMIZATION: Only execute this heavy O(n) loop if strictly necessary
-                const needsPixelLoop = settings.activeLut || grainInt > 0 || (settings.shadows || 0) !== 0 || (settings.highlights || 0) !== 0 || scaleR !== 1 || offR !== 0 || JSON.stringify(sC.master).length > 45;
+                // NEW: Calculate shadow and highlight scalar arrays once outside the loop
+                const shadowVal = (settings.shadows || 0) / 100;
+                const highlightVal = (settings.highlights || 0) / 100;
+
+                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || scaleR !== 1 || offR !== 0 || JSON.stringify(sC.master).length > 45;
 
                 if (needsPixelLoop) {
                     for (let y = 0; y < h; y++) {
@@ -163,56 +140,52 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                             const i = (y * w + x) * 4;
                             let r = data[i], g = data[i+1], b = data[i+2];
 
-                            // 1. External 3D LUT Application (.CUBE files)
+                            // 1. External 3D LUT Application
                             if (settings.activeLut) {
                                 const lP = applyLutToPixel(r, g, b, settings.activeLut);
                                 if (lP) { r = lP[0]; g = lP[1]; b = lP[2]; }
                             }
 
-                            // 2. Shadows/Highlights Math (Smooth Quadratic Roll-off)
-                            const shadowVal = (settings.shadows || 0) / 100;    
-                            const highlightVal = (settings.highlights || 0) / 100;
-
-                            const adjustTone = (channel) => {
-                                const norm = channel / 255;
-                                let out = norm;
-
-                                // If Shadows slider is moved
-                                if (shadowVal !== 0) {
-                                    // Only affect the bottom 50% of the histogram. 
-                                    // Math.pow gives a smooth curve so pure blacks stay black.
-                                    const shadowMask = Math.max(0, 1.0 - (norm / 0.5));
-                                    out += shadowVal * 0.5 * Math.pow(shadowMask, 2); 
+                            // 2. NEW: Pro Luminance-Based Shadows & Highlights
+                            if (shadowVal !== 0 || highlightVal !== 0) {
+                                // Calculate perceptual luminance
+                                const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                                
+                                // Prevent math collapse on pure black pixels
+                                if (luma > 0.0) {
+                                    let lumaAdjust = 0;
+                                    
+                                    if (shadowVal !== 0) {
+                                        // Smooth sine wave targeting bottom 50% (peaks at 0.25)
+                                        const shadowMask = luma < 0.5 ? Math.sin(luma * Math.PI) : 0;
+                                        lumaAdjust += shadowVal * 0.5 * shadowMask;
+                                    }
+                                    
+                                    if (highlightVal !== 0) {
+                                        // Smooth sine wave targeting top 50% (peaks at 0.75)
+                                        const highlightMask = luma > 0.5 ? Math.sin((luma - 0.5) * Math.PI) : 0;
+                                        lumaAdjust += highlightVal * 0.5 * highlightMask;
+                                    }
+                        
+                                    // Apply adjustment globally across RGB to preserve perfect color fidelity
+                                    const ratio = (luma + lumaAdjust) / luma;
+                                    r *= ratio;
+                                    g *= ratio;
+                                    b *= ratio;
                                 }
-
-                                // If Highlights slider is moved
-                                if (highlightVal !== 0) {
-                                    // Only affect the top 50% of the histogram.
-                                    const highlightMask = Math.max(0, (norm - 0.5) / 0.5);
-                                    // When reducing highlights (-), pull them down smoothly
-                                    // When boosting (+), push them up.
-                                    out += highlightVal * 0.5 * Math.pow(highlightMask, 2);
-                                }
-
-                                return clamp(out * 255);
-                            };
-
-                            r = adjustTone(r);
-                            g = adjustTone(g);
-                            b = adjustTone(b);
+                            }
 
                             // 3. Curves & 3-Way Color Grading Injection
                             r = applyCurve(r, lutR) * scaleR + offR;
                             g = applyCurve(g, lutG) * scaleG + offG;
                             b = applyCurve(b, lutB) * scaleB + offB;
 
-                            // 4. Procedural Luma-Masked Hash Noise (Grain)
+                            // 4. Procedural Grain
                             if (grainInt > 0) {
                                 const luma = (0.299*r + 0.587*g + 0.114*b) / 255; 
-                                const grainMask = Math.pow(1.0 - Math.max(0, Math.min(1, luma)), 1.2); // Less grain in highlights
+                                const grainMask = Math.pow(1.0 - Math.max(0, Math.min(1, luma)), 1.2); 
                                 const sx = Math.floor(x / grainScale), sy = Math.floor(y / grainScale);
                                 
-                                // High-speed pseudo-random hash generator
                                 let noise = (Math.sin(sx * 12.9898 + sy * 78.233) * 43758.5453 % 1) - 0.5;
                                 
                                 if (grainRough > 0) {
@@ -224,7 +197,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                 r += nVal; g += nVal; b += nVal;
                             }
                             
-                            // 5. Final Clamp and Commit
+                            // 5. Final Clamp
                             data[i] = clamp(r); data[i+1] = clamp(g); data[i+2] = clamp(b);
                         }
                     }
@@ -233,8 +206,6 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
 
                 /* =========================================================================
                    STAGE 4: GLOBAL OVERLAYS & SPATIAL CONVOLUTION
-                   Handles global temperature/tint casts and spatial matrix calculations 
-                   for edge enhancement (Sharpening).
                    ========================================================================= */
                 const drawOverlay = (color, opacity, mode = 'overlay') => {
                     if (opacity <= 0) return;
@@ -246,20 +217,16 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     ctx.restore();
                 };
 
-                // Split Temperature/Tint into additive/subtractive color overlays
                 if (settings.temp > 0) drawOverlay('rgb(255, 140, 0)', settings.temp/200, 'overlay');
                 else if (settings.temp < 0) drawOverlay('rgb(0, 100, 255)', Math.abs(settings.temp)/200, 'overlay');
                 if (settings.tint > 0) drawOverlay('rgb(255, 0, 255)', settings.tint/200, 'overlay');
                 else if (settings.tint < 0) drawOverlay('rgb(0, 255, 0)', Math.abs(settings.tint)/200, 'overlay');
                 
-                // Dehaze logic (Multiply for positive to cut through fog, Screen for negative to add fog)
                 if (settings.dehaze > 0) drawOverlay('black', settings.dehaze/200, 'multiply');
                 else if (settings.dehaze < 0) drawOverlay('white', Math.abs(settings.dehaze)/200, 'screen');
 
-                // SHARPENING: 3x3 Convolution Matrix 
                 if (settings.sharpen > 0) {
                     const sAmt = nP(settings.sharpen) * 4; 
-                    // Standard edge-enhancement kernel
                     const kernel = [ 
                       [0, -sAmt, 0], 
                       [-sAmt, 1 + 4*sAmt, -sAmt], 
@@ -268,7 +235,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     
                     const sharpData = ctx.getImageData(0, 0, w, h);
                     const sPx = sharpData.data; 
-                    const tPx = new Uint8ClampedArray(sPx); // Immutable read-target array
+                    const tPx = new Uint8ClampedArray(sPx); 
                     
                     for (let y = 1; y < h - 1; y++) { 
                       for (let x = 1; x < w - 1; x++) { 
@@ -286,7 +253,6 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     ctx.putImageData(sharpData, 0, 0);
                 }
                 
-                // Pipeline Complete
                 resolve(canvas);
 
             } catch (error) {
