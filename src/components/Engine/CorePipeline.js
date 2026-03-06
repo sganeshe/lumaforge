@@ -128,11 +128,15 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const grainScale = Math.max(1, Math.floor(Math.max(1, (settings.grainSize||50) / 5) * resMult));
                 const grainRough = (settings.grainRoughness||50) / 100;
                 
-                // NEW: Calculate shadow and highlight scalar arrays once outside the loop
+                // Set up scalars for safe polynomial math
                 const shadowVal = (settings.shadows || 0) / 100;
                 const highlightVal = (settings.highlights || 0) / 100;
 
-                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || scaleR !== 1 || offR !== 0 || JSON.stringify(sC.master).length > 45;
+                // Better detection to skip the loop if values are completely neutral
+                const isCurveActive = (sC.master?.length > 2) || (sC.red?.length > 2) || (sC.green?.length > 2) || (sC.blue?.length > 2);
+                const isGradingActive = scaleR !== 1 || scaleG !== 1 || scaleB !== 1 || offR !== 0 || offG !== 0 || offB !== 0;
+                
+                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || isGradingActive || isCurveActive;
 
                 if (needsPixelLoop) {
                     for (let y = 0; y < h; y++) {
@@ -146,39 +150,34 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                 if (lP) { r = lP[0]; g = lP[1]; b = lP[2]; }
                             }
 
-                            // 2. NEW: Pro Luminance-Based Shadows & Highlights
+                            // 2. NEW: Pro Polynomial Tone Curve (Shadows & Highlights)
+                            // This math creates a continuous curve that cannot crush colors or overflow
                             if (shadowVal !== 0 || highlightVal !== 0) {
-                                // Calculate perceptual luminance
-                                const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-                                
-                                // Prevent math collapse on pure black pixels
-                                if (luma > 0.0) {
-                                    let lumaAdjust = 0;
+                                const adjustTone = (c) => {
+                                    let norm = c / 255;
                                     
                                     if (shadowVal !== 0) {
-                                        // Smooth sine wave targeting bottom 50% (peaks at 0.25)
-                                        const shadowMask = luma < 0.5 ? Math.sin(luma * Math.PI) : 0;
-                                        lumaAdjust += shadowVal * 0.5 * shadowMask;
+                                        // Smoothly lifts or crushes the bottom 50% of the histogram
+                                        norm += shadowVal * Math.pow(1 - norm, 2) * norm * 2.0;
                                     }
-                                    
                                     if (highlightVal !== 0) {
-                                        // Smooth sine wave targeting top 50% (peaks at 0.75)
-                                        const highlightMask = luma > 0.5 ? Math.sin((luma - 0.5) * Math.PI) : 0;
-                                        lumaAdjust += highlightVal * 0.5 * highlightMask;
+                                        // Smoothly boosts or recovers the top 50% of the histogram
+                                        norm += highlightVal * Math.pow(norm, 2) * (1 - norm) * 2.0;
                                     }
-                        
-                                    // Apply adjustment globally across RGB to preserve perfect color fidelity
-                                    const ratio = (luma + lumaAdjust) / luma;
-                                    r *= ratio;
-                                    g *= ratio;
-                                    b *= ratio;
-                                }
+                                    return norm * 255;
+                                };
+                                
+                                r = adjustTone(r);
+                                g = adjustTone(g);
+                                b = adjustTone(b);
                             }
 
                             // 3. Curves & 3-Way Color Grading Injection
-                            r = applyCurve(r, lutR) * scaleR + offR;
-                            g = applyCurve(g, lutG) * scaleG + offG;
-                            b = applyCurve(b, lutB) * scaleB + offB;
+                            if (isCurveActive || isGradingActive) {
+                                r = applyCurve(r, lutR) * scaleR + offR;
+                                g = applyCurve(g, lutG) * scaleG + offG;
+                                b = applyCurve(b, lutB) * scaleB + offB;
+                            }
 
                             // 4. Procedural Grain
                             if (grainInt > 0) {
