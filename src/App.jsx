@@ -278,17 +278,31 @@ export default function App() {
 
   const handleDiagnosticsSignIn = () => setView('BOOT_TO_LOGIN');
 
-  // <-- UPLINK ADDITION: Forking logic
-  const handleForkFromUplink = (forkedSettings, sourceImageUrl) => {
-      setSettings({ 
-          ...getFreshState(), 
-          ...forkedSettings, 
-          imageDimensions: forkedSettings.imageDimensions 
-      });
-      setImage(sourceImageUrl); 
-      setHistory({ past: [], future: [] }); 
-      setUiKey(prev => prev + 1); 
-      setView('BOOT_TO_EDITOR');
+  // <-- UPDATED UPLINK ADDITION: Forking logic with a new user image
+  const handleForkFromUplink = (forkedSettings, file) => {
+      // 1. Generate a URL for the user's newly selected image
+      const visualUrl = URL.createObjectURL(file);
+      
+      // 2. Calculate the dimensions of their specific image
+      const img = new Image();
+      img.onload = () => {
+          setSettings({ 
+              ...getFreshState(), 
+              ...forkedSettings, 
+              // Overwrite the original preset's dimensions with the user's image dimensions
+              imageDimensions: { 
+                  w: img.naturalWidth, 
+                  h: img.naturalHeight, 
+                  ratio: img.naturalWidth / img.naturalHeight 
+              } 
+          });
+          
+          setImage(visualUrl); 
+          setHistory({ past: [], future: [] }); 
+          setUiKey(prev => prev + 1); 
+          setView('BOOT_TO_EDITOR');
+      };
+      img.src = visualUrl;
   };
 
   return (
