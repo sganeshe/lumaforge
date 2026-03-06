@@ -57,7 +57,7 @@ export const LeftSidebar = ({
             // NOTE: We need to get the canvas image as a Blob.
             // This assumes your canvas has an ID of 'luma-stage-canvas'. 
             // If your canvas ID is different, update the document.getElementById query below!
-            const canvas = document.getElementById('luma-stage-canvas'); 
+            const canvas = document.querySelector('.canvas-area canvas'); 
             
             if (!canvas) {
                 alert("SYSTEM ERROR: Cannot locate active canvas for export.");
