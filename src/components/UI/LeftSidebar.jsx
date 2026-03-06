@@ -137,8 +137,7 @@ export const LeftSidebar = ({
                             <>
                                 <button onClick={onSaveToCloud} className="new-preset-btn">+ SAVE LOOK (PRIVATE)</button>
                                 
-                                {/* UPLINK ADDITION: Publish button */}
-                                <button onClick={handlePublishToUplink} className="new-preset-btn" style={{marginTop: '10px', background: 'var(--amber)', color: '#000'}}>
+                                <button onClick={handlePublishToUplink} className="new-preset-btn">
                                     ↑ PUBLISH TO UPLINK
                                 </button>
                                 
