@@ -44,7 +44,7 @@ export const LeftSidebar = ({
     };
 
     // --- COMPRESSION ENGINE ---
-const compressImageForWeb = (imageSource, maxWidth = 1920, quality = 0.8) => {
+    const compressImageForWeb = (imageSource, maxWidth = 1920, quality = 0.8) => {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -78,7 +78,7 @@ const compressImageForWeb = (imageSource, maxWidth = 1920, quality = 0.8) => {
         img.onerror = () => reject(new Error("Failed to load image for compression."));
         img.src = imageSource;
     });
-};
+    };
 
     // <-- UPLINK ADDITION: Publish logic
     const publishToUplink = async (session, rawImageSrc, finalGradedBlob, settings, caption = "") => {
@@ -140,7 +140,7 @@ const compressImageForWeb = (imageSource, maxWidth = 1920, quality = 0.8) => {
         console.error("TRANSMISSION FAILED:", error);
         alert(`UPLOAD FAILED: ${error.message}`);
     }
-};
+    };
 
     return (
         <div className="left-sidebar">
