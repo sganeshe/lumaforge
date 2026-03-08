@@ -322,7 +322,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
         {/* 2. LIGHT */}
         {activeTab === 'EDIT' && (
           <div className="control-section">
-            <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="panel-header">
                 <span>TONE MAPPING</span>
                 <button 
                     onClick={handleMagicAuto} 
