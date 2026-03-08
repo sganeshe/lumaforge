@@ -21,6 +21,7 @@ import { ManualScreen } from './components/UI/ManualScreen';
 import { DiagnosticsScreen } from './components/UI/DiagnosticsScreen';
 import { LoginScreen } from './components/UI/LoginScreen';
 import { UplinkFeed } from './components/UI/UplinkFeed';
+import { UserProfile } from './components/UI/UserProfile'; // NEW: Import the Profile view
 
 // Utilities, Hooks & Services
 import { supabase } from './lib/supabaseClient'; 
@@ -107,6 +108,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('EDIT');
   const [settings, setSettings] = useState(getFreshState());
   
+  // NEW: Profile Routing State
+  const [activeProfile, setActiveProfile] = useState(null); 
+
   const deferredSettings = useDeferredValue(settings);
   
   const [history, setHistory] = useState({ past: [], future: [] });
@@ -131,6 +135,7 @@ export default function App() {
         setHistory({ past: [], future: [] });
         setShowCloud(false);
         setPendingFile(null); 
+        setActiveProfile(null); // Reset profile on home
     }
   };
 
@@ -278,18 +283,18 @@ export default function App() {
 
   const handleDiagnosticsSignIn = () => setView('BOOT_TO_LOGIN');
 
-  // <-- UPDATED UPLINK ADDITION: Forking logic with a new user image
-  const handleForkFromUplink = (forkedSettings, file) => {
-      // 1. Generate a URL for the user's newly selected image
-      const visualUrl = URL.createObjectURL(file);
+  const handleForkFromUplink = (forkedSettings, fileOrUrl) => {
+      // Handle both File objects (from old feed) and string URLs (from new relational feed)
+      const visualUrl = typeof fileOrUrl === 'string' ? fileOrUrl : URL.createObjectURL(fileOrUrl);
       
-      // 2. Calculate the dimensions of their specific image
       const img = new Image();
+      // Ensure crossOrigin is set so we can measure remote images
+      if (visualUrl.startsWith('http')) img.crossOrigin = "anonymous";
+      
       img.onload = () => {
           setSettings({ 
               ...getFreshState(), 
               ...forkedSettings, 
-              // Overwrite the original preset's dimensions with the user's image dimensions
               imageDimensions: { 
                   w: img.naturalWidth, 
                   h: img.naturalHeight, 
@@ -311,7 +316,7 @@ export default function App() {
           <style>{`* { animation: none !important; transition: none !important; }`}</style>
       )}
 
-      {/* NEW UPLINK BOOT ROUTE */}
+      {/* BOOT ROUTES */}
       {view === 'BOOT' && <BootScreen onComplete={() => setView('HOME')} />}
       {view === 'BOOT_TO_HOME' && <BootScreen onComplete={() => setView('HOME')} />}
       {view === 'BOOT_TO_EDITOR' && <BootScreen onComplete={() => setView('EDITOR')} />}
@@ -319,16 +324,37 @@ export default function App() {
       {view === 'BOOT_TO_DIAGNOSTICS' && <BootScreen onComplete={() => setView('DIAGNOSTICS')} />}
       {view === 'BOOT_TO_LOGIN' && <BootScreen onComplete={() => setView('LOGIN')} />}
       {view === 'BOOT_TO_UPLINK' && <BootScreen onComplete={() => setView('UPLINK')} />} 
+      
+      {/* NEW: PROFILE BOOT ROUTE */}
+      {view === 'BOOT_TO_PROFILE' && <BootScreen onComplete={() => setView('PROFILE')} />}
 
+      {/* STATIC VIEWS */}
       {view === 'HOME' && <HomeScreen onUpload={handleUpload} onNavigate={setView} />}
       {view === 'MANUAL' && <ManualScreen onBack={() => setView('BOOT_TO_HOME')} />}
       {view === 'LOGIN' && <LoginScreen onBack={handleAbortLogin} />}
       
-      {/* NEW UPLINK COMPONENT RENDER */}
+      {/* UPLINK FEED VIEW */}
       {view === 'UPLINK' && (
           <UplinkFeed 
               session={session} 
               onBack={() => setView('BOOT_TO_HOME')} 
+              onFork={handleForkFromUplink} 
+              onProfileClick={(username) => {
+                  setActiveProfile(username);
+                  setView('BOOT_TO_PROFILE');
+              }}
+          />
+      )}
+
+      {/* NEW: USER PROFILE VIEW */}
+      {view === 'PROFILE' && (
+          <UserProfile 
+              username={activeProfile} 
+              session={session} 
+              onBack={() => {
+                  setActiveProfile(null);
+                  setView('BOOT_TO_UPLINK'); // Returns to feed seamlessly
+              }} 
               onFork={handleForkFromUplink} 
           />
       )}
@@ -337,6 +363,7 @@ export default function App() {
           <DiagnosticsScreen onBack={() => setView('BOOT_TO_HOME')} session={session} appPrefs={appPrefs} setAppPrefs={setAppPrefs} onSignIn={handleDiagnosticsSignIn}/>
       )}
 
+      {/* EDITOR WORKSPACE */}
       {view === 'EDITOR' && (
         <div className="app-shell">
           
