@@ -43,60 +43,104 @@ export const LeftSidebar = ({
         }
     };
 
-    // <-- UPLINK ADDITION: Publish logic
-    const handlePublishToUplink = async () => {
-        if (!session) {
-            setShowAuth();
-            return;
-        }
+    // --- COMPRESSION ENGINE ---
+const compressImageForWeb = (imageSource, maxWidth = 1920, quality = 0.8) => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
         
-        if (!imageSrc) {
-            alert("SYSTEM ERROR: No active image to publish.");
-            return;
-        }
+        img.onload = () => {
+            // Calculate new dimensions while maintaining aspect ratio
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > maxWidth) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+            }
 
-        const presetName = prompt("NAME YOUR PRESET FOR THE UPLINK:");
-        if (!presetName) return;
+            // Draw to a temporary canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw the image onto the canvas at the new size
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Export as a highly compressed WebP blob
+            canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error("Canvas compression failed."));
+            }, 'image/webp', quality);
+        };
+        
+        img.onerror = () => reject(new Error("Failed to load image for compression."));
+        img.src = imageSource;
+    });
+};
 
-        alert("INITIATING UPLINK UPLOAD. PLEASE WAIT...");
+    // <-- UPLINK ADDITION: Publish logic
+    const publishToUplink = async (session, rawImageSrc, finalGradedBlob, settings, caption = "") => {
+    if (!session) return alert("UPLINK OFFLINE: Authentication required.");
 
-        try {
-            // 1. Generate the high-res Blob using your pro export pipeline!
-            const blob = await generateExportBlob(imageSrc, currentSettings);
+    try {
+        setStatusMsg("COMPRESSING PAYLOADS...");
 
-            const fileName = `uplink_${session.user.id}_${Date.now()}.png`;
+        // ---------------------------------------------------------
+        // STEP 1: COMPRESS BOTH IMAGES IN THE BROWSER (Fast!)
+        // ---------------------------------------------------------
+        // We compress the raw original down to 1080p WebP (good enough for the background swap)
+        const compressedRawBlob = await compressImageForWeb(rawImageSrc, 1080, 0.7);
+        
+        // We compress the final grade slightly higher quality (1440p WebP) because it's the main feed image
+        const finalImageURL = URL.createObjectURL(finalGradedBlob); 
+        const compressedGradedBlob = await compressImageForWeb(finalImageURL, 1440, 0.85);
 
-            // 2. Upload to Supabase Storage
-            const { error: uploadError } = await supabase.storage
-                .from('uplink_images')
-                .upload(fileName, blob, { contentType: 'image/png' });
+        setStatusMsg("TRANSMITTING TO CLOUD...");
 
-            if (uploadError) throw uploadError;
+        // ---------------------------------------------------------
+        // STEP 2: UPLOAD TO STORAGE (Now 10x faster)
+        // ---------------------------------------------------------
+        const rawFileName = `${session.user.id}/raw_${Date.now()}.webp`;
+        const gradedFileName = `${session.user.id}/graded_${Date.now()}.webp`;
 
-            // 3. Get public URL
-            const { data: { publicUrl } } = supabase.storage
-                .from('uplink_images')
-                .getPublicUrl(fileName);
+        // Upload Raw
+        const { error: rawUploadErr } = await supabase.storage
+            .from('uplink_images')
+            .upload(rawFileName, compressedRawBlob, { contentType: 'image/webp' });
+        if (rawUploadErr) throw rawUploadErr;
 
-            // 4. Save to database
-            const { error: dbError } = await supabase
-                .from('uplink_posts')
-                .insert([{
-                    user_id: session.user.id,
-                    original_image_url: rawImageUrl, 
-                    graded_image_url: finalImageUrl,
-                    settings: settings,
-                    caption: captionText
-                }]);
+        // Upload Graded
+        const { error: gradedUploadErr } = await supabase.storage
+            .from('uplink_images')
+            .upload(gradedFileName, compressedGradedBlob, { contentType: 'image/webp' });
+        if (gradedUploadErr) throw gradedUploadErr;
 
-            if (dbError) throw dbError;
-            alert("UPLOAD COMPLETE. PRESET IS LIVE ON THE UPLINK.");
+        // Get Public URLs
+        const rawImageUrl = supabase.storage.from('uplink_images').getPublicUrl(rawFileName).data.publicUrl;
+        const finalImageUrl = supabase.storage.from('uplink_images').getPublicUrl(gradedFileName).data.publicUrl;
 
-        } catch (err) {
-            console.error(err);
-            alert("UPLOAD FAILED: " + err.message);
-        }
-    };
+        // ---------------------------------------------------------
+        // STEP 3: WRITE TO RELATIONAL DATABASE
+        // ---------------------------------------------------------
+        const { error: dbError } = await supabase.from('uplink_posts').insert([{
+            user_id: session.user.id,
+            original_image_url: rawImageUrl, 
+            graded_image_url: finalImageUrl, 
+            settings: settings, // The DB holds the math, so we don't need PNG metadata in the cloud!
+            caption: caption
+        }]);
+
+        if (dbError) throw dbError;
+
+        alert("PAYLOAD PUBLISHED TO THE UPLINK.");
+
+    } catch (error) {
+        console.error("TRANSMISSION FAILED:", error);
+        alert(`UPLOAD FAILED: ${error.message}`);
+    }
+};
 
     return (
         <div className="left-sidebar">
