@@ -202,9 +202,12 @@ export default function App() {
       }
 
       const img = new Image();
+      img.crossOrigin = "anonymous"; // FIX 1: Prevents CORS/Tainted Canvas black screens
+      
       img.onload = () => {
+          const freshState = getFreshState();
           let nextSettings = { 
-              ...getFreshState(), 
+              ...freshState, 
               imageDimensions: { w: img.naturalWidth, h: img.naturalHeight, ratio: img.naturalWidth / img.naturalHeight } 
           };
           let nextImage = visualUrl;
@@ -212,42 +215,68 @@ export default function App() {
           if (projectData) {
               if (window.confirm("LUMAFORGE Project Detected.\n[OK] Restore Edits\n[Cancel] Import Clean")) {
                   
-                  // 1. SAFELY PARSE THE PAYLOAD
                   let saved = projectData.settings || projectData;
                   
-                  // If the metadata reader returned a string, force parse it into an object
+                  // Force parse if the payload got stringified
                   if (typeof saved === 'string') {
-                      try {
-                          saved = JSON.parse(saved);
-                      } catch (err) {
-                          console.error("PAYLOAD CORRUPTED: Could not parse metadata string.", err);
-                          saved = {}; // Fallback to empty so we don't crash
-                      }
+                      try { saved = JSON.parse(saved); } 
+                      catch (err) { console.error("[LUMAFORGE_ERR] Corrupt metadata:", err); saved = {}; }
                   }
 
-                  // 2. SAFELY MERGE THE DATA
+                  // FIX 2: Strict Math Validation (Prevents NaN poisoning)
                   if (typeof saved === 'object' && saved !== null) {
-                      nextSettings = { 
-                          ...nextSettings, 
-                          ...saved, 
-                          // Protect the core dimensions from being overwritten by bad metadata
-                          imageDimensions: nextSettings.imageDimensions 
-                      };
+                      Object.keys(freshState).forEach(key => {
+                          if (saved[key] !== undefined && saved[key] !== null) {
+                              // If the engine expects a number, force it to be a valid number
+                              if (typeof freshState[key] === 'number') {
+                                  const parsedNum = Number(saved[key]);
+                                  nextSettings[key] = !isNaN(parsedNum) ? parsedNum : freshState[key];
+                              } else {
+                                  nextSettings[key] = saved[key];
+                              }
+                          }
+                      });
+                      // Lock the dimensions to the actual physical image
+                      nextSettings.imageDimensions = { w: img.naturalWidth, h: img.naturalHeight, ratio: img.naturalWidth / img.naturalHeight };
                   }
 
-                  // 3. RESTORE THE RAW NEGATIVE (If it exists in the payload)
+                  // FIX 3: Safe Source Validation (Prevents drawing broken base64 strings)
                   if (projectData.source && typeof projectData.source === 'string') {
-                      nextImage = projectData.source;
+                      const testImg = new Image();
+                      testImg.crossOrigin = "anonymous";
+                      
+                      testImg.onload = () => {
+                          setImage(projectData.source);
+                          setSettings(nextSettings);
+                          setHistory({ past: [], future: [] });
+                          setUiKey(prev => prev + 1); 
+                          setView('BOOT_TO_EDITOR');
+                      };
+                      
+                      testImg.onerror = () => {
+                          console.error("[LUMAFORGE_ERR] Steganographic source image is corrupted. Falling back to local upload.");
+                          setImage(visualUrl);
+                          setSettings(nextSettings);
+                          setHistory({ past: [], future: [] });
+                          setUiKey(prev => prev + 1); 
+                          setView('BOOT_TO_EDITOR');
+                      };
+                      
+                      testImg.src = projectData.source;
+                      return; // Halt execution here and let testImg handle the boot
                   }
               }
           }
 
+          // Normal Boot Sequence (No metadata or metadata lacked a source image)
           setSettings(nextSettings);
           setImage(nextImage);
           setHistory({ past: [], future: [] });
           setUiKey(prev => prev + 1); 
           setView('BOOT_TO_EDITOR');
       };
+      
+      img.onerror = () => alert("SYSTEM ERROR: Failed to render image data.");
       img.src = visualUrl;
   }, [pushToHistory]);
 
