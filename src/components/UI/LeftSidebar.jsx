@@ -86,7 +86,9 @@ export const LeftSidebar = ({
                     author_name: session.user.email.split('@')[0], 
                     preset_name: presetName,
                     image_url: publicUrl,
-                    settings: currentSettings 
+                    settings: currentSettings,
+                    upvotes_count: 0,
+                    upvoted_by: []
                 }]);
 
             if (dbError) throw dbError;
