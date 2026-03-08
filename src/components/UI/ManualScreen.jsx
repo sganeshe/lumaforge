@@ -18,7 +18,7 @@ export const ManualScreen = ({ onBack }) => {
         <div className="terminal-page amber-theme">
             <div className="terminal-header">
                 <button onClick={onBack} className="terminal-back-btn">← TERMINATE MANUAL</button>
-                <div className="terminal-title">LUMAFORGE_OPTICS_MANUAL_v2.0.0</div>
+                <div className="terminal-title">LUMAFORGE_OPTICS_MANUAL_v1.0.0</div>
             </div>
             
             <div className="terminal-content" style={{ paddingBottom: '100px' }}>
@@ -45,7 +45,7 @@ export const ManualScreen = ({ onBack }) => {
    HISTOGRAM DISTRIBUTION (LUMA)
     |          .::.
     |         .::::.
-    |      ..:::::::..        .::.
+    |       ..:::::::..        .::.
     |   ..:::::::::::::....:::::::..
     +---------------------------------
       BLK    SHD    MID    HLT    WHT
@@ -128,15 +128,18 @@ export const ManualScreen = ({ onBack }) => {
                     </ul>
                 </div>
 
-                {/* 07: K-MEANS PALETTES */}
+                {/* 07: HEURISTIC AUTO-ENHANCE */}
                 <div className="manual-section">
-                    <h3>[ 07 ] K-MEANS PIXEL QUANTIZATION</h3>
+                    <h3>[ 07 ] HEURISTIC AUTO-ENHANCE (MAGIC WAND)</h3>
                     
                     <p>
-                        The engine features a built-in mathematical quantizer that reads the final graded buffer and extracts the core aesthetic DNA of the image.
+                        An automated computer vision tool that analyzes the source image's statistical distribution to neutralize optical imbalances before grading.
                     </p>
                     <ul>
-                        <li><b>CENTROID EXTRACTION:</b> By iterating through the canvas pixels, the engine clusters similar RGB values and calculates the geometric center (centroid) of the dominant colors, outputting a precise 5-swatch hex palette perfectly matched to your final grade.</li>
+                        <li><b>PERCENTILE CLIPPING:</b> The engine processes a down-sampled buffer, explicitly ignoring the darkest and brightest 2% of anomalous pixels to calculate the image's true mathematical contrast range.</li>
+                        <li><b>THE GREY WORLD ALGORITHM:</b> Evaluates overall RGB density. If the mean vector leans heavily toward a specific spectrum (e.g., tungsten lighting), the engine mathematically calculates the exact inverse Temp/Tint values required to pull the image back to neutral gray.</li>
+                        <li><b>VOLUME RECOVERY:</b> Analyzes the percentage of pixels trapped in absolute shadows or clipped highlights, logarithmically adjusting recovery sliders to rescue texture data.</li>
+                        <li><b>INTENTIONAL DEADZONES:</b> The algorithm contains built-in mathematical tolerances. If lighting casts (like golden hour sunsets) fall within standard "mood" deviations, the engine intentionally leaves them untouched to preserve the photographer's intent.</li>
                     </ul>
                 </div>
 
@@ -162,9 +165,23 @@ export const ManualScreen = ({ onBack }) => {
                     </ul>
                 </div>
 
-                {/* 09: EXECUTION PIPELINE */}
+                {/* 09: THE UPLINK */}
                 <div className="manual-section">
-                    <h3>[ 09 ] CANVAS EXECUTION PIPELINE</h3>
+                    <h3>[ 09 ] THE UPLINK (COMMUNITY MAINFRAME)</h3>
+                    
+                    <p>
+                        A decentralized, cloud-powered network for sharing and remixing steganographic project files. 
+                    </p>
+                    <ul>
+                        <li><b>PUBLISHING:</b> Bypasses local storage arrays to push your high-resolution PNG and its embedded mathematical JSON payload directly to the global public feed.</li>
+                        <li><b>FORK & REMIX:</b> Click "FORK & REMIX" on any community post to intercept the transmission. The engine extracts the author's exact parameter states (LUTs, curves, spatial offsets) and immediately applies them onto your own selected source negative.</li>
+                        <li><b>DATA STREAM FILTERING:</b> Dynamically queries the database, sorting network payloads by <code>LATEST</code> timestamps, <code>POPULAR</code> consensus metrics, or <code>OLDEST</code> archive records.</li>
+                    </ul>
+                </div>
+
+                {/* 10: EXECUTION PIPELINE */}
+                <div className="manual-section">
+                    <h3>[ 10 ] CANVAS EXECUTION PIPELINE</h3>
                     <p>
                         For technical predictability, the engine processes layer mathematics in a strict, non-destructive sequential pipeline:
                     </p>
