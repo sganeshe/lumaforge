@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
 import CurvesEditor from './CurvesEditor';
-import { HexColorPicker } from "react-colorful"; 
+import { HexColorPicker } from "react-colorful";
+import { analyzeAndEnhance } from '../Engine/AutoEnhance';
 
 const Histogram = memo(({ imageSrc, exposure, contrast, whites, blacks, shadows, highlights }) => {
     const canvasRef = useRef(null);
@@ -257,6 +258,32 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
       });
   }, [setSettings, onSnapshot]);
 
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const handleMagicAuto = async () => {
+      if (!image) return;
+      setIsAnalyzing(true);
+      onSnapshot(); 
+      
+      const optimalSettings = await analyzeAndEnhance(image);
+      
+      if (optimalSettings) {
+          setSettings(prev => ({
+              ...prev,
+              exposure: optimalSettings.exposure,
+              contrast: optimalSettings.contrast,
+              temp: optimalSettings.temp,
+              tint: optimalSettings.tint,
+              shadows: optimalSettings.shadows,
+              highlights: optimalSettings.highlights,
+              // Add these two new lines!
+              saturation: optimalSettings.saturation,
+              vibrance: optimalSettings.vibrance
+          }));
+      }
+      setIsAnalyzing(false);
+  };
+
   return (
     <div className="editor-controls">
       <div className="tabs">
@@ -295,7 +322,28 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
         {/* 2. LIGHT */}
         {activeTab === 'EDIT' && (
           <div className="control-section">
-            <div className="panel-header">TONE MAPPING</div>
+            <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>TONE MAPPING</span>
+                <button 
+                    onClick={handleMagicAuto} 
+                    disabled={isAnalyzing}
+                    style={{
+                        background: 'rgba(255, 184, 0, 0.15)',
+                        color: 'var(--amber)',
+                        border: '1px solid var(--amber)',
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontFamily: 'var(--font-mono)',
+                        cursor: isAnalyzing ? 'wait' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}
+                >
+                    {isAnalyzing ? 'ANALYZING...' : '🪄 AUTO FIX'}
+                </button>
+            </div>
             {['exposure','contrast','highlights','shadows','whites','blacks'].map(k => 
                 <SmartSlider key={k} label={k.toUpperCase()} value={settings[k]} 
                     min={k==='exposure'? -5:-100} max={k==='exposure'?5:100} 
