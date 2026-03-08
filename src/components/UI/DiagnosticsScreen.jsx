@@ -61,7 +61,6 @@ export const DiagnosticsScreen = ({ onBack, session, appPrefs, setAppPrefs, onSi
             full_name: profile.full_name,
             bio: profile.bio,
             avatar_url: profile.avatar_url,
-            updated_at: new Date()
         });
 
         if (error) {
