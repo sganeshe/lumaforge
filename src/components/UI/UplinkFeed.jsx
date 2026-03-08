@@ -25,7 +25,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
         // Apply sorting math based on user selection
         if (currentSort === 'popular') {
             // Sort by likes first, then by date (so ties show newest first)
-            query = query.order('likes', { ascending: false }).order('created_at', { ascending: false });
+            query = query.order('upvotes_count', { ascending: false }).order('created_at', { ascending: false });
         } else if (currentSort === 'oldest') {
             // Sort by date created (oldest first)
             query = query.order('created_at', { ascending: true });
