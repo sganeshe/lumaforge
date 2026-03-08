@@ -7,7 +7,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
     const [pendingSettings, setPendingSettings] = useState(null);
     const fileInputRef = useRef(null);
     
-    // NEW: Sorting State
+    // Sorting State
     const [sortBy, setSortBy] = useState('latest'); // 'latest', 'popular', 'oldest'
 
     // Re-fetch whenever the sortBy state changes
@@ -15,26 +15,20 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
         fetchFeed(sortBy);
     }, [sortBy]);
 
-    // NEW: Dynamic Supabase Query Builder
+    // Dynamic Supabase Query Builder
     const fetchFeed = async (currentSort) => {
         setLoading(true);
         
-        // Start building the query
         let query = supabase.from('uplink_posts').select('*');
 
-        // Apply sorting math based on user selection
         if (currentSort === 'popular') {
-            // Sort by likes first, then by date (so ties show newest first)
             query = query.order('upvotes_count', { ascending: false }).order('created_at', { ascending: false });
         } else if (currentSort === 'oldest') {
-            // Sort by date created (oldest first)
             query = query.order('created_at', { ascending: true });
         } else {
-            // Default: Sort by date created (newest first)
             query = query.order('created_at', { ascending: false });
         }
 
-        // Execute the query
         const { data, error } = await query.limit(50);
         
         if (!error && data) setPosts(data);
@@ -58,7 +52,8 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
             newLikesCount += 1;
         }
 
-        setPosts(posts.map(p => p.id === post.id ? { ...p, likes: newLikesCount, liked_by: newLikedBy } : p));
+        // FIX: Update the exact variable names that match your database!
+        setPosts(posts.map(p => p.id === post.id ? { ...p, upvotes_count: newLikesCount, upvoted_by: newLikedBy } : p));
         
         await supabase
             .from('uplink_posts')
@@ -97,7 +92,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
 
             <div className="terminal-content" style={{ padding: '20px', paddingBottom: '100px', maxWidth: '1200px', margin: '0 auto' }}>
                 
-                {/* NEW: Filter UI Toolbar */}
+                {/* Filter UI Toolbar */}
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '1px solid #333', paddingBottom: '15px', alignItems: 'center' }}>
                     <span style={{ color: '#666', fontSize: '12px', marginRight: '10px', fontFamily: 'var(--font-mono)' }}>SORT DATA STREAM:</span>
                     
@@ -130,7 +125,8 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                         {posts.map(post => {
-                            const isLikedByMe = session && post.liked_by && post.liked_by.includes(session.user.id);
+                            // FIX: Checking 'upvoted_by' instead of 'liked_by'
+                            const isLikedByMe = session && post.upvoted_by && post.upvoted_by.includes(session.user.id);
                             
                             return (
                                 <div key={post.id} style={{ background: '#111', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -171,7 +167,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div>
                                                 <div style={{ color: 'var(--amber)', fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                                                    {post.preset_name.toUpperCase()}
+                                                    {post.preset_name ? post.preset_name.toUpperCase() : 'UNTITLED_PRESET'}
                                                 </div>
                                                 <div style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
                                                     BY: {post.author_name}
@@ -193,7 +189,8 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                                                     transition: 'all 0.2s'
                                                 }}
                                             >
-                                                ▲ {post.likes}
+                                                {/* FIX: Now calling upvotes_count directly */}
+                                                ▲ {post.upvotes_count || 0}
                                             </button>
                                         </div>
                                     </div>
