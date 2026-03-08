@@ -83,10 +83,10 @@ export const LeftSidebar = ({
                 .from('uplink_posts')
                 .insert([{
                     user_id: session.user.id,
-                    author_name: session.user.email.split('@')[0], 
-                    preset_name: presetName,
-                    image_url: publicUrl,
-                    settings: currentSettings 
+                    original_image_url: rawImageUrl, 
+                    graded_image_url: finalImageUrl,
+                    settings: settings,
+                    caption: captionText
                 }]);
 
             if (dbError) throw dbError;
