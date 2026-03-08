@@ -45,10 +45,10 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
         if (!session) return alert("UPLINK ERROR: Login required to upvote.");
         
         const userId = session.user.id;
-        const hasLiked = post.liked_by && post.liked_by.includes(userId);
+        const hasLiked = post.upvoted_by && post.upvoted_by.includes(userId);
         
-        let newLikedBy = post.liked_by || [];
-        let newLikesCount = post.likes || 0;
+        let newLikedBy = post.upvoted_by || [];
+        let newLikesCount = post.upvotes_count || 0;
 
         if (hasLiked) {
             newLikedBy = newLikedBy.filter(id => id !== userId); 
@@ -62,7 +62,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
         
         await supabase
             .from('uplink_posts')
-            .update({ likes: newLikesCount, liked_by: newLikedBy })
+            .update({ upvotes_count: newLikesCount, upvoted_by: newLikedBy })
             .eq('id', post.id);
     };
 
