@@ -211,9 +211,34 @@ export default function App() {
 
           if (projectData) {
               if (window.confirm("LUMAFORGE Project Detected.\n[OK] Restore Edits\n[Cancel] Import Clean")) {
-                  const saved = projectData.settings || projectData;
-                  nextSettings = { ...nextSettings, ...saved, imageDimensions: nextSettings.imageDimensions };
-                  if (projectData.source) nextImage = projectData.source;
+                  
+                  // 1. SAFELY PARSE THE PAYLOAD
+                  let saved = projectData.settings || projectData;
+                  
+                  // If the metadata reader returned a string, force parse it into an object
+                  if (typeof saved === 'string') {
+                      try {
+                          saved = JSON.parse(saved);
+                      } catch (err) {
+                          console.error("PAYLOAD CORRUPTED: Could not parse metadata string.", err);
+                          saved = {}; // Fallback to empty so we don't crash
+                      }
+                  }
+
+                  // 2. SAFELY MERGE THE DATA
+                  if (typeof saved === 'object' && saved !== null) {
+                      nextSettings = { 
+                          ...nextSettings, 
+                          ...saved, 
+                          // Protect the core dimensions from being overwritten by bad metadata
+                          imageDimensions: nextSettings.imageDimensions 
+                      };
+                  }
+
+                  // 3. RESTORE THE RAW NEGATIVE (If it exists in the payload)
+                  if (projectData.source && typeof projectData.source === 'string') {
+                      nextImage = projectData.source;
+                  }
               }
           }
 
