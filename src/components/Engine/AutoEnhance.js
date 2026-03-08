@@ -1,7 +1,7 @@
 /**
  * @file AutoEnhance.js
  * @description Analyzes image histograms to calculate optimal starting parameters.
- * Tuned for gentle, cinematic roll-offs. Now includes Saturation and Vibrance heuristics.
+ * Tuned to mimic Snapseed's highly subtle, non-destructive Auto-Enhance logic.
  */
 
 export const analyzeAndEnhance = (imageSrc) => {
@@ -27,7 +27,6 @@ export const analyzeAndEnhance = (imageSrc) => {
             let rSum = 0, gSum = 0, bSum = 0, lumaSum = 0, satSum = 0;
             const lumaHist = new Array(256).fill(0);
 
-            // 1. Scan Pixels
             for (let i = 0; i < data.length; i += 4) {
                 const r = data[i], g = data[i+1], b = data[i+2];
                 rSum += r; gSum += g; bSum += b;
@@ -36,7 +35,7 @@ export const analyzeAndEnhance = (imageSrc) => {
                 lumaSum += luma;
                 lumaHist[Math.max(0, Math.min(255, luma))]++;
 
-                // Fast Saturation Approximation: Delta between max and min color channels
+                // Fast Saturation Approximation
                 const pMax = Math.max(r, g, b);
                 const pMin = Math.min(r, g, b);
                 satSum += (pMax - pMin);
@@ -48,7 +47,6 @@ export const analyzeAndEnhance = (imageSrc) => {
             const avgLuma = lumaSum / totalPixels;
             const avgSat = satSum / totalPixels;
 
-            // 2. PERCENTILE CLIPPING (Still used, but for gentle math)
             let minBound = 0, maxBound = 255;
             let cumulative = 0;
             for (let i = 0; i < 256; i++) {
@@ -57,59 +55,64 @@ export const analyzeAndEnhance = (imageSrc) => {
                 if (cumulative > totalPixels * 0.98) { maxBound = i; break; } 
             }
 
-            // 3. GENTLE EXPOSURE 
-            // Target middle grey is ~125. Multiplier dropped from 3.5 to 1.5.
-            const targetLuma = 125;
-            let suggestedExposure = ((targetLuma - avgLuma) / 128) * 1.5; 
-
-            // 4. GENTLE CONTRAST 
-            const currentRange = Math.max(1, maxBound - minBound);
-            let suggestedContrast = 0;
-            if (currentRange < 230) {
-                // Maxes out around +45 instead of +150
-                suggestedContrast = ((255 - currentRange) / 255) * 45; 
+            // 1. SMART EXPOSURE (Deadzone: +/- 15)
+            // If the lighting is naturally a little moody, leave it alone.
+            let suggestedExposure = 0;
+            const lumaDiff = 120 - avgLuma; 
+            if (Math.abs(lumaDiff) > 15) { 
+                // Math.pow ensures a gentle curve instead of a harsh snap
+                suggestedExposure = Math.sign(lumaDiff) * Math.pow(Math.abs(lumaDiff) / 120, 0.8) * 1.5;
             }
 
-            // 5. GENTLE WHITE BALANCE
-            // Multiplier dropped from 150 to 40. Just a nudge toward neutral.
-            const suggestedTemp = ((avgB - avgR) / 128) * 40; 
+            // 2. SMART CONTRAST
+            // Only bump contrast if the image is truly muddy (range < 210). Max bump is +20.
+            let suggestedContrast = 0;
+            const currentRange = Math.max(1, maxBound - minBound);
+            if (currentRange < 210) {
+                suggestedContrast = ((210 - currentRange) / 210) * 20; 
+            }
+
+            // 3. SMART WHITE BALANCE (Protect Golden Hour)
+            // If the color cast is mild, it might be an intentional sunset or neon light. Don't fix it.
+            let suggestedTemp = 0;
+            const tempDiff = avgB - avgR;
+            if (Math.abs(tempDiff) > 20) { 
+                suggestedTemp = Math.sign(tempDiff) * Math.pow(Math.abs(tempDiff) / 128, 0.8) * 20;
+            }
+
+            let suggestedTint = 0;
             const avgRB = (avgR + avgB) / 2;
-            const suggestedTint = ((avgG - avgRB) / 128) * 40;
+            const tintDiff = avgG - avgRB;
+            if (Math.abs(tintDiff) > 15) {
+                suggestedTint = Math.sign(tintDiff) * Math.pow(Math.abs(tintDiff) / 128, 0.8) * 20;
+            }
 
-            // 6. GENTLE SHADOWS / HIGHLIGHTS
-            // Multiplier dropped from 3.0 to 1.2.
-            const shadowVolume = lumaHist.slice(0, 40).reduce((a, b) => a + b, 0) / totalPixels;
-            const highlightVolume = lumaHist.slice(215, 256).reduce((a, b) => a + b, 0) / totalPixels;
+            // 4. AMBIANCE (Shadows/Highlights)
+            // Only rescue details if more than 5% of the image is trapped in extreme darkness/light
+            const shadowVolume = lumaHist.slice(0, 30).reduce((a, b) => a + b, 0) / totalPixels;
+            const highlightVolume = lumaHist.slice(225, 256).reduce((a, b) => a + b, 0) / totalPixels;
 
-            let suggestedShadows = shadowVolume > 0.05 ? (shadowVolume * 100 * 1.2) : 0;
-            let suggestedHighlights = highlightVolume > 0.05 ? -(highlightVolume * 100 * 1.2) : 0;
+            let suggestedShadows = shadowVolume > 0.05 ? Math.min(30, shadowVolume * 100 * 0.8) : 0;
+            let suggestedHighlights = highlightVolume > 0.05 ? Math.max(-30, -(highlightVolume * 100 * 0.8)) : 0;
 
-            // 7. NEW: VIBRANCE & SATURATION LOGIC
+            // 5. THE "POP" (Vibrance only, zero Saturation)
             let suggestedVibrance = 0;
-            let suggestedSaturation = 0;
-            
-            // A healthy, natural photo has an average saturation variance of around 50 to 60.
-            if (avgSat < 50) {
-                const deficit = 50 - avgSat;
-                // Favor vibrance (protects skin tones) over flat saturation
-                suggestedVibrance = deficit * 0.8; 
-                suggestedSaturation = deficit * 0.25;
+            if (avgSat < 60) {
+                suggestedVibrance = ((60 - avgSat) / 60) * 25; // Max +25 vibrance
             } else if (avgSat > 100) {
-                // Slightly cool down extremely neon/over-saturated images
-                const excess = avgSat - 100;
-                suggestedVibrance = -excess * 0.4;
-                suggestedSaturation = -excess * 0.15;
+                suggestedVibrance = -((avgSat - 100) / 100) * 10; // Gentle cool down
             }
 
             resolve({
-                exposure: Math.max(-5, Math.min(5, suggestedExposure)),
-                contrast: Math.max(-100, Math.min(100, suggestedContrast)),
-                temp: Math.max(-100, Math.min(100, suggestedTemp)),
-                tint: Math.max(-100, Math.min(100, suggestedTint)),
-                shadows: Math.max(0, Math.min(100, suggestedShadows)),
-                highlights: Math.max(-100, Math.min(0, suggestedHighlights)),
-                saturation: Math.max(-100, Math.min(100, suggestedSaturation)),
-                vibrance: Math.max(-100, Math.min(100, suggestedVibrance))
+                // Round everything to clean numbers for the UI sliders
+                exposure: Number(suggestedExposure.toFixed(2)),
+                contrast: Math.round(suggestedContrast),
+                temp: Math.round(suggestedTemp),
+                tint: Math.round(suggestedTint),
+                shadows: Math.round(suggestedShadows),
+                highlights: Math.round(suggestedHighlights),
+                saturation: 0, // Pro move: Let vibrance do the work to protect skin tones
+                vibrance: Math.round(suggestedVibrance)
             });
         };
         
