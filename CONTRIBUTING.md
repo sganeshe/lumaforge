@@ -1,57 +1,47 @@
-# Contributing to LUMAFORGE
+# Contributing to Lumaforge
 
-First off, thank you for considering contributing to LUMAFORGE! It's people like you that make the open-source community such an incredible place to build, learn, and iterate.
+First off, thank you for your interest in contributing to Lumaforge! This is a community-driven open-source project, and your contributions—whether it's optimizing the rendering pipeline, fixing UI bugs, or expanding the documentation—are highly appreciated.
 
-LUMAFORGE is a high-performance, browser-native digital darkroom. Because we handle millions of pixel calculations per frame, we maintain strict architectural and performance standards. Please review these guidelines before submitting a Pull Request.
+## How to Contribute?
 
----
+### 1. Reporting Bugs:
+If you encounter a bug (e.g., rendering errors, math calculations resulting in `NaN`, or UI state issues), please open an issue in the repository.
+* Check existing issues to ensure it hasn't already been reported.
+* Provide clear, step-by-step instructions to reproduce the error.
+* Include your browser version, operating system, and any relevant console errors.
 
-## 🏗️ Architectural Guidelines & Best Practices
+### 2. Suggesting Enhancements:
+If you have an idea for a new feature or an architectural improvement:
+* Open an **Issue** to discuss your proposed changes before writing significant amounts of code.
+* Ensure the feature aligns with the project's goal of remaining lightweight, professional, and optimized for browser environments.
 
-### 1. The Core Engine (`src/components/Engine`)
-The optics engine is the heart of LUMAFORGE. When modifying files like `CorePipeline.js` or `LUTSystem.js`:
-* **The Pixel Loop is Sacred:** The main `for` loops in the pipeline iterate millions of times per render. **Do not** instantiate new objects, arrays, or complex functions inside these loops. Pre-calculate math outside the loop whenever possible.
-* **Bitwise & Typed Arrays:** Favor `Uint8ClampedArray` and bitwise operations for color math over standard floating-point arrays where applicable to maintain memory efficiency.
-* **Non-Destructive Routing:** Always preserve the source negative. Geometry (crop/rotate) should be applied via Canvas Transform Matrices, not by deleting source pixels.
+### 3. Submitting Pull Requests:
+When you are ready to submit code:
+1. **Fork** the repository to your own GitHub account.
+2. **Clone** your fork locally.
+3. **Create a branch** for your feature or bug fix: 
+   `git checkout -b feature/your-feature-name` or `fix/your-bug-name`.
+4. **Commit** your changes with clear, descriptive messages (see standards below).
+5. **Push** to your fork: `git push origin feature/your-feature-name`.
+6. Open a **Pull Request** against the `main` branch of the original Lumaforge repository.
 
-### 2. The UI & React State (`src/components/UI`)
-* **Memoization is Mandatory:** The canvas engine is extremely heavy. You must use `useMemo` and `useCallback` to prevent unnecessary re-renders of the `ImageStage` when users are just toggling UI elements.
-* **Terminal Brutalism:** Keep the CSS pure. We do not use Tailwind, Bootstrap, or heavy component libraries. Stick to the vanilla CSS variables defined in `index.css` to maintain the industrial, retro-tech aesthetic.
+## Development Guidelines:
 
----
+When contributing code to Lumaforge, please keep the following technical principles in mind:
 
-## 🚀 How to Contribute
+* **Strict Data Validation:** The canvas rendering pipeline relies on strict numerical values. Always sanitize user inputs and safely parse steganographic metadata (e.g., handling strings vs. JSON objects) to prevent application crashes and `NaN` poisoning.
+* **Performance First:** Prioritize performance and resource management. Avoid adding heavy external dependencies if a native Web API (like Canvas or Web Workers) can handle the task efficiently.
+* **UI Consistency:** Maintain the existing dark mode, high-contrast aesthetic. Ensure new UI components are responsive, accessible, and align with the established design system.
 
-### 1. Reporting Bugs
-If you find a bug, please open an Issue on GitHub and include:
-* A clear description of the problem.
-* Steps to reproduce the bug.
-* Your browser and OS version.
-* If it's a rendering bug, please attach the `.png` file containing the steganographic payload so we can recreate the exact mathematical state.
+## Commit Message Standards:
 
-### 2. Proposing Features
-Want to add a new film emulation, a split-toning tool, or a new LUT parser?
-* **Open an Issue first:** Describe the feature and how it fits into the current optics engine. Let's discuss the math and UI approach before you spend hours coding!
+Please format your commit messages clearly to maintain an organized and readable project history. We recommend using standard conventional commits:
 
-### 3. Pull Request Process
-1. **Fork the repository** and create your branch from `main`.
-2. **Name your branch descriptively:** `feat/add-kodak-lut` or `fix/halation-memory-leak`.
-3. **Write clean, documented code:** Ensure any complex math includes comments explaining the formulas.
-4. **Test your changes:** Verify that your feature doesn't break the base export pipeline or the Steganographic metadata injection.
-5. **Submit your PR:**
-   * Provide a clear summary of the changes.
-   * If your PR changes the UI or rendering output, **you must include Before & After screenshots**.
-
----
-
-## 📝 Commit Message Convention
-We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification for versioning clarity:
-* `feat:` A new feature (e.g., `feat: add trilinear interpolation for LUTs`)
-* `fix:` A bug fix (e.g., `fix: prevent divide-by-zero in curves math`)
-* `docs:` Documentation changes
-* `style:` Code formatting (no logic changes)
-* `refactor:` Code restructuring without changing behavior
+* `feat: [Description]` - For introducing new features.
+* `fix: [Description]` - For bug fixes.
+* `refactor: [Description]` - For code optimizations that do not change external functionality.
+* `style: [Description]` - For formatting changes (CSS tweaks, removing whitespace, etc.).
+* `docs: [Description]` - For updates to documentation or code comments.
 
 ---
-
-By contributing, you agree that your contributions will be licensed under its MIT License. Thank you for helping us build the ultimate web-based optics engine!
+*Thank you for helping build the future of browser-based optics!*
