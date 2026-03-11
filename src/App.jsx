@@ -82,7 +82,7 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
       </div>
 
       <div className="home-footer">
-        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.1.0</span></div>
+        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.0.0</span></div>
         <div className="footer-row links">
            <span style={{color: '#fff'}}>CREATOR: SAUMYA GANESHE</span>
            <a href="https://github.com/sganeshe" target="_blank" rel="noreferrer">[ GITHUB ]</a>
@@ -176,6 +176,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
+  // FIXED: Flawless parsing and geometry synchronization for imports
   const processFile = useCallback(async (file) => {
       if (file.name.toLowerCase().endsWith('.cube')) {
           const reader = new FileReader();
@@ -190,26 +191,53 @@ export default function App() {
           return; 
       }
 
-      const visualUrl = URL.createObjectURL(file);
+      let visualUrl = URL.createObjectURL(file);
       let projectData = null;
+
+      // Extract the metadata payload safely
       if (file.type === 'image/png') {
-          try { projectData = await readMetadata(file); } catch (err) { console.warn("No metadata found in source."); }
+          try { 
+              const rawMeta = await readMetadata(file); 
+              // Bulletproof check: Ensure it is parsed to an Object, never a string
+              projectData = typeof rawMeta === 'string' ? JSON.parse(rawMeta) : rawMeta;
+          } catch (err) { 
+              console.warn("[LUMAFORGE_META] No readable payload found."); 
+          }
       }
 
+      let nextImage = visualUrl;
+      let savedSettings = null;
+
+      // Extract settings BEFORE loading the image to prevent freezing the UI thread
+      if (projectData && window.confirm("LUMAFORGE Project Detected.\n[OK] Restore Edits\n[Cancel] Import Clean")) {
+          savedSettings = projectData.settings || projectData;
+          
+          // Double failsafe: parse nested stringifications
+          if (typeof savedSettings === 'string') {
+              try { savedSettings = JSON.parse(savedSettings); } catch(e) {}
+          }
+          
+          if (projectData.source) {
+              nextImage = projectData.source; // Switch canvas source to the pure uncompressed negative
+          }
+      }
+
+      // We MUST measure the physical dimensions of the FINAL image source, not the cropped thumbnail
       const img = new Image();
       img.onload = () => {
           let nextSettings = { 
               ...getFreshState(), 
               imageDimensions: { w: img.naturalWidth, h: img.naturalHeight, ratio: img.naturalWidth / img.naturalHeight } 
           };
-          let nextImage = visualUrl;
 
-          if (projectData) {
-              if (window.confirm("LUMAFORGE Project Detected.\n[OK] Restore Edits\n[Cancel] Import Clean")) {
-                  const saved = projectData.settings || projectData;
-                  nextSettings = { ...nextSettings, ...saved, imageDimensions: nextSettings.imageDimensions };
-                  if (projectData.source) nextImage = projectData.source;
-              }
+          // Safely merge the decoded settings
+          if (savedSettings && typeof savedSettings === 'object') {
+              nextSettings = { 
+                  ...nextSettings, 
+                  ...savedSettings, 
+                  // CRITICAL: Force the dimensions to match the newly loaded source image
+                  imageDimensions: nextSettings.imageDimensions 
+              };
           }
 
           setSettings(nextSettings);
@@ -218,7 +246,9 @@ export default function App() {
           setUiKey(prev => prev + 1); 
           setView('BOOT_TO_EDITOR');
       };
-      img.src = visualUrl;
+      
+      // Load the image into the DOM to trigger the calculation
+      img.src = nextImage;
   }, [pushToHistory]);
 
   const handleUpload = (e) => {
