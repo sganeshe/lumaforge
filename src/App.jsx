@@ -82,7 +82,7 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
       </div>
 
       <div className="home-footer">
-        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.0.0</span></div>
+        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.1.0</span></div>
         <div className="footer-row links">
            <span style={{color: '#fff'}}>CREATOR: SAUMYA GANESHE</span>
            <a href="https://github.com/sganeshe" target="_blank" rel="noreferrer">[ GITHUB ]</a>
