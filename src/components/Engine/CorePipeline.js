@@ -1,9 +1,9 @@
 /**
  * @file CorePipeline.js
- * @description The primary rendering engine for LUMAFORGE. Handles all destructive, 
- * pixel-level mathematical operations including convolutions, Look-Up Tables (LUTs), 
- * and procedural noise generation.
- * @warning PERFORMANCE CRITICAL. 
+ * @description The primary rendering engine for LUMAFORGE. 
+ * Hybrid Engine: Uses hardware-accelerated CSS for base filters, 
+ * and pure JS Canvas arrays for advanced Tone Mapping, Luminosity Masked Grading,
+ * and Blended High-Fidelity Spatial Hash Grain.
  */
 
 import { applyLutToPixel } from './LUTSystem';
@@ -13,7 +13,6 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
     return new Promise((resolve, reject) => {
         const img = new Image();
         
-        // SECURITY & CORS
         if (imageSrc && imageSrc.startsWith('http')) {
             img.crossOrigin = "anonymous";
         }
@@ -25,7 +24,6 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 let w = img.naturalWidth;
                 let h = img.naturalHeight;
 
-                // DOWN-SAMPLING
                 if (maxDim && (w > maxDim || h > maxDim)) {
                     const ratio = Math.min(maxDim / w, maxDim / h);
                     w = Math.floor(w * ratio);
@@ -39,16 +37,14 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const resMult = Math.max(1, w / 2000); 
 
                 /* =========================================================================
-                   STAGE 1: HARDWARE-ACCELERATED BASE FILTERS
+                   STAGE 1: HARDWARE-ACCELERATED BASE FILTERS 
                    ========================================================================= */
-                const whiteVal = (settings.whites || 0) / 5;
-                const blackVal = (settings.blacks || 0) / 5;
                 const blurPx = settings.sharpen < 0 ? Math.abs(settings.sharpen) * 0.05 : 0;
                 const scaledBlur = blurPx * resMult;
 
                 ctx.filter = `
-                  brightness(${100 + ((settings.exposure||0) * 20) + whiteVal}%) 
-                  contrast(${100 + (settings.contrast||0) + blackVal + ((settings.dehaze||0)/4)}%) 
+                  brightness(${100 + ((settings.exposure||0) * 20)}%) 
+                  contrast(${100 + (settings.contrast||0) + ((settings.dehaze||0)/4)}%) 
                   saturate(${100 + (settings.saturation||0) + (settings.vibrance||0) + ((settings.dehaze||0)/4)}%) 
                   sepia(${settings.sepia||0}%) invert(${settings.invert||0}%) hue-rotate(${settings.hue||0}deg)
                   blur(${scaledBlur}px)
@@ -121,22 +117,31 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 };
                 
                 const gS = getGrade('shadows'), gM = getGrade('midtones'), gH = getGrade('highlights');
-                const scaleR = 1 + gH.r + gM.r, scaleG = 1 + gH.g + gM.g, scaleB = 1 + gH.b + gM.b;
-                const offR = (gS.r + gM.r)*255, offG = (gS.g + gM.g)*255, offB = (gS.b + gM.b)*255;
 
-                const grainInt = nP(settings.grainAmount) * 255; 
-                const grainScale = Math.max(1, Math.floor(Math.max(1, (settings.grainSize||50) / 5) * resMult));
-                const grainRough = (settings.grainRoughness||50) / 100;
-                
-                // Set up scalars for safe polynomial math
                 const shadowVal = (settings.shadows || 0) / 100;
                 const highlightVal = (settings.highlights || 0) / 100;
+                const whiteVal = (settings.whites || 0) / 100; 
+                const blackVal = (settings.blacks || 0) / 100; 
 
-                // Better detection to skip the loop if values are completely neutral
+                // FIX: Increased intensity multiplier back up to 180 for strong, noticeable grain
+                const grainInt = nP(settings.grainAmount) * 180; 
+                const grainScale = Math.max(1, Math.floor(Math.max(1, (settings.grainSize||50) / 5) * resMult));
+                const grainRough = (settings.grainRoughness||50) / 100;
+
                 const isCurveActive = (sC.master?.length > 2) || (sC.red?.length > 2) || (sC.green?.length > 2) || (sC.blue?.length > 2);
-                const isGradingActive = scaleR !== 1 || scaleG !== 1 || scaleB !== 1 || offR !== 0 || offG !== 0 || offB !== 0;
+                const isGradingActive = gS.r !== 0 || gS.g !== 0 || gS.b !== 0 || gM.r !== 0 || gM.g !== 0 || gM.b !== 0 || gH.r !== 0 || gH.g !== 0 || gH.b !== 0;
                 
-                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || isGradingActive || isCurveActive;
+                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || whiteVal !== 0 || blackVal !== 0 || isGradingActive || isCurveActive;
+
+                // PRECOMPUTED NOISE LUT 
+                let noiseLUT = null;
+                if (grainInt > 0 && needsPixelLoop) {
+                    noiseLUT = new Float32Array(65536);
+                    for (let i = 0; i < 65536; i++) {
+                        // Bounded to exactly -1.0 to 1.0 for predictable blending
+                        noiseLUT[i] = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+                    }
+                }
 
                 if (needsPixelLoop) {
                     for (let y = 0; y < h; y++) {
@@ -144,59 +149,71 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                             const i = (y * w + x) * 4;
                             let r = data[i], g = data[i+1], b = data[i+2];
 
-                            // 1. External 3D LUT Application
                             if (settings.activeLut) {
                                 const lP = applyLutToPixel(r, g, b, settings.activeLut);
                                 if (lP) { r = lP[0]; g = lP[1]; b = lP[2]; }
                             }
 
-                            // 2. NEW: Pro Polynomial Tone Curve (Shadows & Highlights)
-                            // This math creates a continuous curve that cannot crush colors or overflow
-                            if (shadowVal !== 0 || highlightVal !== 0) {
-                                const adjustTone = (c) => {
-                                    let norm = c / 255;
-                                    
-                                    if (shadowVal !== 0) {
-                                        // Smoothly lifts or crushes the bottom 50% of the histogram
-                                        norm += shadowVal * Math.pow(1 - norm, 2) * norm * 2.0;
-                                    }
-                                    if (highlightVal !== 0) {
-                                        // Smoothly boosts or recovers the top 50% of the histogram
-                                        norm += highlightVal * Math.pow(norm, 2) * (1 - norm) * 2.0;
-                                    }
-                                    return norm * 255;
-                                };
-                                
-                                r = adjustTone(r);
-                                g = adjustTone(g);
-                                b = adjustTone(b);
-                            }
+                            if (shadowVal !== 0 || highlightVal !== 0 || whiteVal !== 0 || blackVal !== 0) {
+                                const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                                let newLuma = luma;
 
-                            // 3. Curves & 3-Way Color Grading Injection
-                            if (isCurveActive || isGradingActive) {
-                                r = applyCurve(r, lutR) * scaleR + offR;
-                                g = applyCurve(g, lutG) * scaleG + offG;
-                                b = applyCurve(b, lutB) * scaleB + offB;
-                            }
+                                if (blackVal !== 0) newLuma += blackVal * Math.pow(1 - luma, 4) * 0.4;
+                                if (shadowVal !== 0) newLuma += shadowVal * Math.pow(1 - luma, 2) * luma * 2.5;
+                                if (highlightVal !== 0) newLuma += highlightVal * Math.pow(luma, 2) * (1 - luma) * 2.5;
+                                if (whiteVal !== 0) newLuma += whiteVal * Math.pow(luma, 4) * 0.4;
 
-                            // 4. Procedural Grain
-                            if (grainInt > 0) {
-                                const luma = (0.299*r + 0.587*g + 0.114*b) / 255; 
-                                const grainMask = Math.pow(1.0 - Math.max(0, Math.min(1, luma)), 1.2); 
-                                const sx = Math.floor(x / grainScale), sy = Math.floor(y / grainScale);
-                                
-                                let noise = (Math.sin(sx * 12.9898 + sy * 78.233) * 43758.5453 % 1) - 0.5;
-                                
-                                if (grainRough > 0) {
-                                    const fNoise = (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453 % 1) - 0.5;
-                                    noise = (noise * (1-grainRough)) + (fNoise * grainRough);
+                                if (luma > 0) {
+                                    const ratio = newLuma / luma;
+                                    r *= ratio; g *= ratio; b *= ratio;
+                                } else if (newLuma > 0) {
+                                    r = g = b = newLuma * 255;
                                 }
-                                noise = (noise > 0 ? Math.pow(noise*2, 0.8) : -Math.pow(Math.abs(noise)*2, 0.8)) * 0.5;
-                                const nVal = noise * grainInt * grainMask; 
-                                r += nVal; g += nVal; b += nVal;
+                            }
+
+                            if (isCurveActive) {
+                                r = applyCurve(r, lutR);
+                                g = applyCurve(g, lutG);
+                                b = applyCurve(b, lutB);
+                            }
+
+                            if (isGradingActive) {
+                                const gradeLuma = clamp(0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                                
+                                let shadowWeight = Math.max(0, 1.0 - (gradeLuma * 2.0)); 
+                                let highlightWeight = Math.max(0, (gradeLuma - 0.5) * 2.0); 
+                                let midtoneWeight = Math.max(0, 1.0 - shadowWeight - highlightWeight);
+
+                                r += (gS.r * shadowWeight + gM.r * midtoneWeight + gH.r * highlightWeight) * 255;
+                                g += (gS.g * shadowWeight + gM.g * midtoneWeight + gH.g * highlightWeight) * 255;
+                                b += (gS.b * shadowWeight + gM.b * midtoneWeight + gH.b * highlightWeight) * 255;
+                            }
+
+                            // --- BLENDED MONOCHROMATIC TEXTURE ---
+                            if (grainInt > 0 && noiseLUT) {
+                                const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255; 
+                                
+                                // Strict Parabolic Mask: Peaks at exactly mid-gray (0.5), completely 0 at black (0.0) and white (1.0)
+                                const filmicMask = Math.max(0, 1.0 - Math.pow(Math.abs(luma - 0.5) * 2.0, 2.0)); 
+
+                                const gx = Math.floor(x / grainScale);
+                                const gy = Math.floor(y / grainScale);
+                                
+                                const hash1 = (Math.imul(gx, 1640531513) ^ Math.imul(gy, 2654435789)) & 65535;
+                                let rawNoise = noiseLUT[hash1];
+
+                                if (grainRough > 0) {
+                                    const hash2 = (Math.imul(x, 1640531513) ^ Math.imul(y, 2654435789)) & 65535;
+                                    rawNoise = (rawNoise * (1 - grainRough)) + (noiseLUT[hash2] * grainRough);
+                                }
+                                
+                                const nVal = rawNoise * grainInt * filmicMask;
+
+                                r += nVal;
+                                g += nVal;
+                                b += nVal;
                             }
                             
-                            // 5. Final Clamp
                             data[i] = clamp(r); data[i+1] = clamp(g); data[i+2] = clamp(b);
                         }
                     }

@@ -125,14 +125,12 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
     const [localColor, setLocalColor] = useState(value); 
     const popoverRef = useRef();
 
-    // Ensure the color stays synced if changed from outside, but NOT while we are dragging
     useEffect(() => {
         if (!isOpen) {
             setLocalColor(value);
         }
     }, [value, isOpen]);
 
-    // Close the picker if the user clicks anywhere outside of it
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (popoverRef.current && !popoverRef.current.contains(event.target)) {
@@ -143,10 +141,9 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [isOpen]);
 
-    // Handled perfectly: Instantly updates local UI, seamlessly sends to parent engine
     const handleLiveChange = (newColor) => {
-        setLocalColor(newColor); // The picker handle moves instantly
-        onChange(newColor);      // App.jsx gets the new color to process
+        setLocalColor(newColor); 
+        onChange(newColor);      
     };
 
     return (
@@ -237,13 +234,29 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
   
   const update = useCallback((key, val) => setSettings(p => ({ ...p, [key]: val })), [setSettings]);
 
-  const applyAspect = useCallback((ratioName, ratioVal) => {
+  // SMART ASPECT RATIO TOGGLE (Handles 16:9 -> 9:16 rotation)
+  const applyAspect = useCallback((baseRatioName) => {
       onSnapshot(); 
       setSettings(prev => {
-          if (ratioName === 'FREE') return { ...prev, aspectRatio: 'FREE', cropApplied: false, crop: { ...prev.crop, aspect: null } };
+          if (baseRatioName === 'FREE') return { ...prev, aspectRatio: 'FREE', cropApplied: false, crop: { ...prev.crop, aspect: null } };
           
           const imgRatio = prev.imageDimensions?.ratio || 1;
-          const targetRatio = ratioVal === 'ORIGINAL' ? imgRatio : ratioVal;
+          if (baseRatioName === 'ORIGINAL') {
+              return { ...prev, aspectRatio: 'ORIGINAL', cropApplied: false, crop: { ...prev.crop, aspect: imgRatio } };
+          }
+          
+          let newRatioName = baseRatioName;
+          const flippedBase = baseRatioName.includes(':') ? baseRatioName.split(':').reverse().join(':') : null;
+
+          // If the ratio is already active, flip it!
+          if (prev.aspectRatio === baseRatioName && baseRatioName !== '1:1') {
+              newRatioName = flippedBase;
+          } else if (prev.aspectRatio === flippedBase) {
+              newRatioName = baseRatioName;
+          }
+
+          const [wStr, hStr] = newRatioName.split(':');
+          const targetRatio = parseFloat(wStr) / parseFloat(hStr);
           
           let w = 60; 
           let h = w / (targetRatio * (1/imgRatio));
@@ -251,7 +264,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
           
           return { 
               ...prev, 
-              aspectRatio: ratioName, 
+              aspectRatio: newRatioName, 
               cropApplied: false, 
               crop: { x: 50-(w/2), y: 50-(h/2), width: w, height: h, aspect: targetRatio }
           };
@@ -276,7 +289,6 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
               tint: optimalSettings.tint,
               shadows: optimalSettings.shadows,
               highlights: optimalSettings.highlights,
-              // Add these two new lines!
               saturation: optimalSettings.saturation,
               vibrance: optimalSettings.vibrance
           }));
@@ -301,19 +313,28 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
              <div className="btn-grid-2">
                 <button onClick={()=>{onSnapshot(); update('rotate', (settings.rotate-90)%360);}}>ROTATE L</button>
                 <button onClick={()=>{onSnapshot(); update('rotate', (settings.rotate+90)%360);}}>ROTATE R</button>
-                <button onClick={()=>{onSnapshot(); update('flipX', !settings.flipX);}}>FLIP X</button>
-                <button onClick={()=>{onSnapshot(); update('flipY', !settings.flipY);}}>FLIP Y</button>
+                {/* RENAMED TO FLIP HORIZONTAL / VERTICAL */}
+                <button onClick={()=>{onSnapshot(); update('flipX', !settings.flipX);}}>FLIP HORIZONTAL</button>
+                <button onClick={()=>{onSnapshot(); update('flipY', !settings.flipY);}}>FLIP VERTICAL</button>
              </div>
              <div className="divider"/><label className="control-header">ASPECT RATIO</label>
              <div className="aspect-grid">
-                {['ORIGINAL','FREE','1:1','16:9','4:5','2:3'].map(r => (
-                    <button key={r} className={settings.aspectRatio===r?'active':''} 
-                        onClick={()=>applyAspect(r, r==='FREE'?null:(r==='ORIGINAL'?'ORIGINAL':eval(r.replace(':','/'))))}>{r}</button>
-                ))}
+                {['ORIGINAL','FREE','1:1','16:9','4:5','2:3'].map(baseR => {
+                    const flippedR = baseR.includes(':') ? baseR.split(':').reverse().join(':') : null;
+                    const isActive = settings.aspectRatio === baseR || settings.aspectRatio === flippedR;
+                    const displayLabel = isActive && settings.aspectRatio === flippedR && baseR !== '1:1' ? flippedR : baseR;
+
+                    return (
+                        <button key={baseR} className={isActive ? 'active' : ''} 
+                            onClick={() => applyAspect(baseR)}>
+                            {displayLabel}
+                        </button>
+                    )
+                })}
              </div>
              {settings.aspectRatio !== 'ORIGINAL' && (
                 <button className="primary-btn" style={{marginTop:20}} onClick={() => { onSnapshot(); setSettings(p => ({...p, cropApplied: !p.cropApplied})); }}>
-                   {settings.cropApplied ? "UNLOCK CROP" : "APPLY CROP"}
+                    {settings.cropApplied ? "UNLOCK CROP" : "APPLY CROP"}
                 </button>
              )}
            </div>

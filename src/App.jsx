@@ -82,7 +82,7 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
       </div>
 
       <div className="home-footer">
-        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.0.0</span></div>
+        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.1.0</span></div>
         <div className="footer-row links">
            <span style={{color: '#fff'}}>CREATOR: SAUMYA GANESHE</span>
            <a href="https://github.com/sganeshe" target="_blank" rel="noreferrer">[ GITHUB ]</a>
@@ -278,18 +278,14 @@ export default function App() {
 
   const handleDiagnosticsSignIn = () => setView('BOOT_TO_LOGIN');
 
-  // <-- UPDATED UPLINK ADDITION: Forking logic with a new user image
   const handleForkFromUplink = (forkedSettings, file) => {
-      // 1. Generate a URL for the user's newly selected image
       const visualUrl = URL.createObjectURL(file);
       
-      // 2. Calculate the dimensions of their specific image
       const img = new Image();
       img.onload = () => {
           setSettings({ 
               ...getFreshState(), 
               ...forkedSettings, 
-              // Overwrite the original preset's dimensions with the user's image dimensions
               imageDimensions: { 
                   w: img.naturalWidth, 
                   h: img.naturalHeight, 
@@ -311,7 +307,6 @@ export default function App() {
           <style>{`* { animation: none !important; transition: none !important; }`}</style>
       )}
 
-      {/* NEW UPLINK BOOT ROUTE */}
       {view === 'BOOT' && <BootScreen onComplete={() => setView('HOME')} />}
       {view === 'BOOT_TO_HOME' && <BootScreen onComplete={() => setView('HOME')} />}
       {view === 'BOOT_TO_EDITOR' && <BootScreen onComplete={() => setView('EDITOR')} />}
@@ -324,7 +319,6 @@ export default function App() {
       {view === 'MANUAL' && <ManualScreen onBack={() => setView('BOOT_TO_HOME')} />}
       {view === 'LOGIN' && <LoginScreen onBack={handleAbortLogin} />}
       
-      {/* NEW UPLINK COMPONENT RENDER */}
       {view === 'UPLINK' && (
           <UplinkFeed 
               session={session} 
@@ -341,9 +335,16 @@ export default function App() {
         <div className="app-shell">
           
           <LeftSidebar 
-            onHome={handleGoHome} onExportImage={() => exportImage(image, settings)} onExportCube={saveCube} onLoadPreset={handleCloudLoad}
-            onImportFile={() => fileInputRef.current.click()} onSaveToCloud={handleSaveToCloud} session={session} setShowAuth={() => setView('BOOT_TO_LOGIN')}
-            currentSettings={settings} imageSrc={image}
+            onHome={handleGoHome} 
+            onExportImage={async (format) => await exportImage(image, settings, format)} 
+            onExportCube={saveCube} 
+            onLoadPreset={handleCloudLoad}
+            onImportFile={() => fileInputRef.current.click()} 
+            onSaveToCloud={handleSaveToCloud} 
+            session={session} 
+            setShowAuth={() => setView('BOOT_TO_LOGIN')}
+            currentSettings={settings} 
+            imageSrc={image}
           />
 
           <input ref={fileInputRef} type="file" hidden accept="image/*,.cube" onChange={handleUpload} onClick={(e) => e.target.value = null} />

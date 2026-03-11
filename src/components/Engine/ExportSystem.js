@@ -8,12 +8,6 @@
 import { runCorePipeline } from './CorePipeline';
 import { injectMetadata } from './MetadataSystem'; 
 
-/**
- * Converts a standard Blob object into a Base64 string.
- * Used to losslessly encode the original source negative for the Black Box payload.
- * @param {Blob} blob - The raw image blob.
- * @returns {Promise<string>} Base64 encoded string.
- */
 const blobToBase64 = (blob) => new Promise((res, rej) => {
     const reader = new FileReader();
     reader.onloadend = () => res(reader.result);
@@ -25,28 +19,29 @@ const blobToBase64 = (blob) => new Promise((res, rej) => {
  * Executes the full-resolution render and triggers the browser download protocol.
  * @param {string} imageSrc - The URI of the original source image.
  * @param {Object} settings - The complete LUMAFORGE mathematical state.
+ * @param {string} format - 'jpeg' or 'png'. Default is 'jpeg'.
  */
-export const exportImage = async (imageSrc, settings) => {
+export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   if (!imageSrc) return;
 
   console.log("[LUMAFORGE_EXPORT] Archiving Source Negative...");
   let sourceBase64 = null;
-  try {
-      // Fetch the raw source image to embed in the final PNG for non-destructive editing
-      const response = await fetch(imageSrc);
-      const blob = await response.blob();
-      sourceBase64 = await blobToBase64(blob);
-  } catch (e) { 
-      console.warn("[LUMAFORGE_IO_WARNING] Could not archive source image. Payload will contain settings only."); 
+  const isPNG = format === 'png';
+
+  // Only archive the heavy Base64 source if we are exporting a PNG for Steganography
+  if (isPNG) {
+      try {
+          const response = await fetch(imageSrc);
+          const blob = await response.blob();
+          sourceBase64 = await blobToBase64(blob);
+      } catch (e) { 
+          console.warn("[LUMAFORGE_IO_WARNING] Could not archive source image."); 
+      }
   }
 
-  // 1. RUN UNIFIED PIPELINE
-  // Passing maxDim = null forces the engine to process at the true native resolution of the file.
   console.log("[LUMAFORGE_EXPORT] Processing Full Resolution Matrix...");
   const rawRenderCanvas = await runCorePipeline(imageSrc, settings, null);
   
-  // 2. APPLY GEOMETRY (Crop, Rotate, Flip, Zoom)
-  // Geometry is applied post-pipeline to prevent destructive pixel loss during rotation/scaling.
   const finalCanvas = document.createElement('canvas');
   let cropW, cropH, cropX, cropY;
   
@@ -63,36 +58,27 @@ export const exportImage = async (imageSrc, settings) => {
   finalCanvas.height = cropH;
   const fCtx = finalCanvas.getContext('2d');
   
-  // Force high-quality interpolation for spatial transformations
   fCtx.imageSmoothingEnabled = true;
   fCtx.imageSmoothingQuality = 'high';
-
   fCtx.save();
   
-  // Shift origin to center for accurate rotational physics
   fCtx.translate(cropW/2, cropH/2);
   fCtx.rotate((settings.rotate * Math.PI) / 180);
   fCtx.scale(settings.flipX ? -1 : 1, settings.flipY ? -1 : 1);
   
-  // Mathematical auto-scaling to prevent transparent corners when rotating
   const rad = (settings.rotate * Math.PI) / 180;
   const autoScale = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad));
   fCtx.scale(autoScale, autoScale);
   
-  // Apply User Digital Zoom
   const zoomScale = 1 + (settings.zoom / 100);
   fCtx.scale(zoomScale, zoomScale);
   
-  // Revert origin shift and apply absolute crop coordinates
   fCtx.translate(-cropW/2, -cropH/2);
   fCtx.translate(-cropX, -cropY);
-  
   fCtx.drawImage(rawRenderCanvas, 0, 0);
 
-  // 3. POST-GEOMETRY VIGNETTE
-  // Vignette must be applied here, otherwise cropping would slice off the edges of the vignette.
+  // VIGNETTE
   if (settings.vignette !== 0) {
-      // Reset transform matrix strictly for overlays
       fCtx.setTransform(1, 0, 0, 1, 0, 0); 
       fCtx.globalCompositeOperation = 'source-over';
       const grad = fCtx.createRadialGradient(cropW/2, cropH/2, cropW * 0.4, cropW/2, cropH/2, cropW * 1.2);
@@ -104,8 +90,15 @@ export const exportImage = async (imageSrc, settings) => {
       fCtx.fillRect(0, 0, cropW, cropH);
   }
   
-  // 4. DYNAMIC BRAND WATERMARKING
+  // DYNAMIC BRAND WATERMARKING (FIXED WITH TEXT FALLBACK)
   if (settings.watermark) {
+      fCtx.setTransform(1, 0, 0, 1, 0, 0); 
+      fCtx.globalCompositeOperation = 'source-over';
+      fCtx.globalAlpha = 0.6; // Increased visibility
+      fCtx.shadowColor = "rgba(0,0,0,0.85)";
+      fCtx.shadowBlur = 15; 
+      fCtx.shadowOffsetY = 4;
+
       try {
           const logoImg = await new Promise((res, rej) => {
               const img = new Image(); 
@@ -114,65 +107,60 @@ export const exportImage = async (imageSrc, settings) => {
               img.src = '/lf_white.png';
           });
           
-          fCtx.setTransform(1, 0, 0, 1, 0, 0); 
-          fCtx.globalCompositeOperation = 'source-over';
-          fCtx.globalAlpha = 0.35; 
-          
-          // Dynamically scale logo based on final output resolution (15% of width)
           const targetWidth = Math.max(100, cropW * 0.15); 
           const targetHeight = logoImg.height * (targetWidth / logoImg.width);
           const padding = Math.max(20, cropW * 0.03); 
           
-          // Drop shadow ensures visibility against purely white image backgrounds
-          fCtx.shadowColor = "rgba(0,0,0,0.85)";
-          fCtx.shadowBlur = 15; 
-          fCtx.shadowOffsetY = 4;
-          
           fCtx.drawImage(logoImg, cropW - targetWidth - padding, cropH - targetHeight - padding, targetWidth, targetHeight);
       } catch (err) { 
-          console.warn("[LUMAFORGE_ASSET_FAULT] Watermark failed to render", err); 
+          // FALLBACK: If lf_white.png is missing, draw text instead of failing silently
+          console.warn("[LUMAFORGE_ASSET_FAULT] Watermark image missing. Using text fallback.");
+          const padding = Math.max(20, cropW * 0.03);
+          const fontSize = Math.max(24, cropW * 0.035);
+          fCtx.font = `bold ${fontSize}px sans-serif`;
+          fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
+          fCtx.textAlign = "right";
+          fCtx.textBaseline = "bottom";
+          fCtx.fillText("LUMAFORGE", cropW - padding, cropH - padding);
       }
   }
   fCtx.restore();
 
-  // 5. EXPORT & METADATA STEGANOGRAPHY
-  
-  finalCanvas.toBlob(async (blob) => {
-      if (!blob) return;
-      console.log("[LUMAFORGE_EXPORT] Encoding Black Box Data...");
-      
-      // Construct the exact state required to recreate this session in the future
-      const projectPayload = { 
-          settings: settings, 
-          source: sourceBase64, 
-          timestamp: Date.now(), 
-          version: "4.3.1" 
-      };
-      
-      let finalBlob = blob;
-      try { 
-          finalBlob = await injectMetadata(blob, projectPayload); 
-      } catch (e) { 
-          console.warn("[LUMAFORGE_ENCODE_FAULT] Steganography failed. Exporting raw PNG.", e); 
-      }
-      
-      // Trigger Native Browser Download
-      const link = document.createElement('a');
-      link.download = `LUMAFORGE_${Date.now()}.png`;
-      link.href = URL.createObjectURL(finalBlob);
-      link.click();
-      
-      // Garbage collection to prevent memory leaks with massive 4K blobs
-      URL.revokeObjectURL(link.href);
-  }, 'image/png', 1.0);
+  // FIX: Wrapped the final export in a Promise so the UI knows exactly when it finishes
+  return new Promise((resolve, reject) => {
+      const mimeType = isPNG ? 'image/png' : 'image/jpeg';
+      const quality = isPNG ? 1.0 : 0.95;
+
+      finalCanvas.toBlob(async (blob) => {
+          if (!blob) return reject(new Error("Canvas toBlob failed."));
+          
+          let finalBlob = blob;
+          
+          // Only attempt steganography if the user explicitly chose PNG
+          if (isPNG) {
+              console.log("[LUMAFORGE_EXPORT] Encoding Black Box Data...");
+              const projectPayload = { settings: settings, source: sourceBase64, timestamp: Date.now(), version: "4.3.1" };
+              try { 
+                  finalBlob = await injectMetadata(blob, projectPayload); 
+              } catch (e) { 
+                  console.warn("[LUMAFORGE_ENCODE_FAULT] Steganography failed.", e); 
+              }
+          }
+          
+          const link = document.createElement('a');
+          link.download = `LUMAFORGE_${Date.now()}.${format}`;
+          link.href = URL.createObjectURL(finalBlob);
+          link.click();
+          
+          URL.revokeObjectURL(link.href);
+          resolve(); // Resolves the promise, telling the UI to hide the loading animation
+      }, mimeType, quality);
+  });
 };
 
 /**
  * Executes the full-resolution render and returns the Blob (for Cloud Uploads).
- * This uses the exact same pipeline as exportImage but intercepts the download.
- * @param {string} imageSrc - The URI of the original source image.
- * @param {Object} settings - The complete LUMAFORGE mathematical state.
- * @returns {Promise<Blob>} The final, metadata-injected PNG Blob.
+ * Always defaults to PNG to preserve Uplink remixing capabilities.
  */
 export const generateExportBlob = async (imageSrc, settings) => {
     if (!imageSrc) throw new Error("No source image provided.");
@@ -236,6 +224,12 @@ export const generateExportBlob = async (imageSrc, settings) => {
     }
     
     if (settings.watermark) {
+        fCtx.setTransform(1, 0, 0, 1, 0, 0); 
+        fCtx.globalCompositeOperation = 'source-over';
+        fCtx.globalAlpha = 0.6; 
+        fCtx.shadowColor = "rgba(0,0,0,0.85)";
+        fCtx.shadowBlur = 15; 
+        fCtx.shadowOffsetY = 4;
         try {
             const logoImg = await new Promise((res, rej) => {
                 const img = new Image(); 
@@ -243,39 +237,33 @@ export const generateExportBlob = async (imageSrc, settings) => {
                 img.onerror = rej; 
                 img.src = '/lf_white.png';
             });
-            
-            fCtx.setTransform(1, 0, 0, 1, 0, 0); 
-            fCtx.globalCompositeOperation = 'source-over';
-            fCtx.globalAlpha = 0.35; 
-            
             const targetWidth = Math.max(100, cropW * 0.15); 
             const targetHeight = logoImg.height * (targetWidth / logoImg.width);
             const padding = Math.max(20, cropW * 0.03); 
-            
-            fCtx.shadowColor = "rgba(0,0,0,0.85)";
-            fCtx.shadowBlur = 15; 
-            fCtx.shadowOffsetY = 4;
-            
             fCtx.drawImage(logoImg, cropW - targetWidth - padding, cropH - targetHeight - padding, targetWidth, targetHeight);
-        } catch (err) { }
+        } catch (err) { 
+            const padding = Math.max(20, cropW * 0.03);
+            const fontSize = Math.max(24, cropW * 0.035);
+            fCtx.font = `bold ${fontSize}px sans-serif`;
+            fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
+            fCtx.textAlign = "right";
+            fCtx.textBaseline = "bottom";
+            fCtx.fillText("LUMAFORGE", cropW - padding, cropH - padding);
+        }
     }
     fCtx.restore();
 
-    // Return the blob wrapped in a Promise so LeftSidebar can await it
     return new Promise((resolve, reject) => {
         finalCanvas.toBlob(async (blob) => {
             if (!blob) return reject(new Error("Canvas toBlob failed."));
-            
             const projectPayload = { settings, source: sourceBase64, timestamp: Date.now(), version: "4.3.1" };
-            
             let finalBlob = blob;
             try { 
                 finalBlob = await injectMetadata(blob, projectPayload); 
             } catch (e) { 
                 console.warn("Steganography failed.", e); 
             }
-            
-            resolve(finalBlob); // Give the Blob back!
+            resolve(finalBlob); 
         }, 'image/png', 1.0);
     });
 };

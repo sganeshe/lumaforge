@@ -18,6 +18,10 @@ export const LeftSidebar = ({
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('CLOUD'); 
 
+    // EXPORT STATES
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportFormat, setExportFormat] = useState('jpeg'); // Default to JPEG for speed
+
     useEffect(() => {
         if (session && activeTab === 'CLOUD') {
             setLoading(true);
@@ -43,7 +47,6 @@ export const LeftSidebar = ({
         }
     };
 
-    // <-- UPLINK ADDITION: Publish logic
     const handlePublishToUplink = async () => {
         if (!session) {
             setShowAuth();
@@ -61,24 +64,19 @@ export const LeftSidebar = ({
         alert("INITIATING UPLINK UPLOAD. PLEASE WAIT...");
 
         try {
-            // 1. Generate the high-res Blob using your pro export pipeline!
             const blob = await generateExportBlob(imageSrc, currentSettings);
-
             const fileName = `uplink_${session.user.id}_${Date.now()}.png`;
 
-            // 2. Upload to Supabase Storage
             const { error: uploadError } = await supabase.storage
                 .from('uplink_images')
                 .upload(fileName, blob, { contentType: 'image/png' });
 
             if (uploadError) throw uploadError;
 
-            // 3. Get public URL
             const { data: { publicUrl } } = supabase.storage
                 .from('uplink_images')
                 .getPublicUrl(fileName);
 
-            // 4. Save to database
             const { error: dbError } = await supabase
                 .from('uplink_posts')
                 .insert([{
@@ -100,6 +98,20 @@ export const LeftSidebar = ({
         }
     };
 
+    // WRAPPER FUNCTION FOR LOADING ANIMATION
+    const handleExportClick = async () => {
+        if (isExporting) return;
+        setIsExporting(true);
+        try {
+            // Pass the selected format up to App.jsx
+            await onExportImage(exportFormat);
+        } catch (err) {
+            console.error("[LUMAFORGE_EXPORT_FAULT]", err);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     return (
         <div className="left-sidebar">
             
@@ -115,7 +127,7 @@ export const LeftSidebar = ({
                 
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                     <img src="/lf_orange.png" alt="LUMAFORGE" style={{ height: '22px', objectFit: 'contain' }} />
-                    <div className="version" style={{ marginTop: '4px', fontSize: '8px' }}>v1.0.0</div>
+                    <div className="version" style={{ marginTop: '4px', fontSize: '8px' }}>v1.1.0</div>
                 </div>
             </div>
 
@@ -186,10 +198,50 @@ export const LeftSidebar = ({
                 )}
             </div>
 
-            <div className="sidebar-footer">
-                <button onClick={onExportImage} className="export-btn-large">
-                    EXPORT IMAGE
+            {/* --- EXPORT FOOTER --- */}
+            <div className="sidebar-footer" style={{ padding: '20px 24px' }}>
+                
+                {/* FORMAT TOGGLE */}
+                <div style={{ marginBottom: 15 }}>
+                    <div style={{ display: 'flex', border: '1px solid #333', borderRadius: '4px', overflow: 'hidden' }}>
+                        <button 
+                            onClick={() => setExportFormat('jpeg')}
+                            style={{ 
+                                flex: 1, padding: '8px', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 'bold',
+                                background: exportFormat === 'jpeg' ? 'var(--accent)' : '#111', 
+                                color: exportFormat === 'jpeg' ? '#000' : '#666',
+                                transition: '0.2s'
+                            }}
+                        >
+                            .JPEG
+                        </button>
+                        <button 
+                            onClick={() => setExportFormat('png')}
+                            style={{ 
+                                flex: 1, padding: '8px', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 'bold',
+                                background: exportFormat === 'png' ? 'var(--accent)' : '#111', 
+                                color: exportFormat === 'png' ? '#000' : '#666',
+                                transition: '0.2s'
+                            }}
+                        >
+                            .PNG
+                        </button>
+                    </div>
+                    <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '9px', color: '#666', fontFamily: 'var(--font-mono)' }}>
+                        {exportFormat === 'jpeg' ? '[ FAST COMPRESSION ]' : '[ METADATA ENABLED ]'}
+                    </div>
+                </div>
+
+                {/* EXPORT BUTTON */}
+                <button 
+                    onClick={handleExportClick} 
+                    className="export-btn-large" 
+                    disabled={isExporting}
+                    style={{ opacity: isExporting ? 0.7 : 1, cursor: isExporting ? 'wait' : 'pointer' }}
+                >
+                    {isExporting ? '> ENCODING MATRIX...' : 'EXPORT IMAGE'}
                 </button>
+
                 <div className="status-bar">
                     <div className={`status-dot ${session ? 'online' : 'offline'}`} />
                     {session ? 'SYSTEM ONLINE' : 'LOCAL ONLY'}
