@@ -42,52 +42,62 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   console.log("[LUMAFORGE_EXPORT] Processing Full Resolution Matrix...");
   const rawRenderCanvas = await runCorePipeline(imageSrc, settings, null);
   
+  const RW = rawRenderCanvas.width;
+  const RH = rawRenderCanvas.height;
+
+  let cropW = settings.aspectRatio === 'ORIGINAL' ? RW : (settings.crop.width / 100) * RW;
+  let cropH = settings.aspectRatio === 'ORIGINAL' ? RH : (settings.crop.height / 100) * RH;
+  let cropX = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.x / 100) * RW;
+  let cropY = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.y / 100) * RH;
+
+  // ---------------------------------------------------------
+  // STAGE 1: Extract the Cropped Region Unrotated
+  // ---------------------------------------------------------
+  const unrotatedCanvas = document.createElement('canvas');
+  unrotatedCanvas.width = cropW;
+  unrotatedCanvas.height = cropH;
+  const uCtx = unrotatedCanvas.getContext('2d');
+  uCtx.imageSmoothingEnabled = true;
+  uCtx.imageSmoothingQuality = 'high';
+
+  uCtx.translate(cropW/2, cropH/2);
+  const zoomScale = 1 + (settings.zoom / 100);
+  uCtx.scale(zoomScale, zoomScale);
+  uCtx.translate(-cropW/2, -cropH/2);
+  uCtx.drawImage(rawRenderCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+  // ---------------------------------------------------------
+  // STAGE 2: Rotate and Flip on an Expanding Canvas
+  // ---------------------------------------------------------
+  const isRotated = settings.rotate === 90 || settings.rotate === 270;
   const finalCanvas = document.createElement('canvas');
-  let cropW, cropH, cropX, cropY;
   
-  if (settings.aspectRatio === 'ORIGINAL') { 
-      cropW = rawRenderCanvas.width; cropH = rawRenderCanvas.height; cropX = 0; cropY = 0; 
-  } else { 
-      cropW = (settings.crop.width / 100) * rawRenderCanvas.width; 
-      cropH = (settings.crop.height / 100) * rawRenderCanvas.height; 
-      cropX = (settings.crop.x / 100) * rawRenderCanvas.width; 
-      cropY = (settings.crop.y / 100) * rawRenderCanvas.height; 
-  }
+  // SWAP WIDTH AND HEIGHT IF ROTATED TO PREVENT CLIPPING
+  finalCanvas.width = isRotated ? cropH : cropW;
+  finalCanvas.height = isRotated ? cropW : cropH;
   
-  finalCanvas.width = cropW;
-  finalCanvas.height = cropH;
   const fCtx = finalCanvas.getContext('2d');
-  
   fCtx.imageSmoothingEnabled = true;
   fCtx.imageSmoothingQuality = 'high';
-  fCtx.save();
-  
-  fCtx.translate(cropW/2, cropH/2);
+
+  fCtx.translate(finalCanvas.width/2, finalCanvas.height/2);
   fCtx.rotate((settings.rotate * Math.PI) / 180);
   fCtx.scale(settings.flipX ? -1 : 1, settings.flipY ? -1 : 1);
-  
-  const rad = (settings.rotate * Math.PI) / 180;
-  const autoScale = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad));
-  fCtx.scale(autoScale, autoScale);
-  
-  const zoomScale = 1 + (settings.zoom / 100);
-  fCtx.scale(zoomScale, zoomScale);
-  
   fCtx.translate(-cropW/2, -cropH/2);
-  fCtx.translate(-cropX, -cropY);
-  fCtx.drawImage(rawRenderCanvas, 0, 0);
+  fCtx.drawImage(unrotatedCanvas, 0, 0);
 
-  // VIGNETTE
+  // VIGNETTE (Applied to the final expanding canvas)
   if (settings.vignette !== 0) {
       fCtx.setTransform(1, 0, 0, 1, 0, 0); 
       fCtx.globalCompositeOperation = 'source-over';
-      const grad = fCtx.createRadialGradient(cropW/2, cropH/2, cropW * 0.4, cropW/2, cropH/2, cropW * 1.2);
+      const fW = finalCanvas.width, fH = finalCanvas.height;
+      const grad = fCtx.createRadialGradient(fW/2, fH/2, fW * 0.4, fW/2, fH/2, fW * 1.2);
       const vColor = settings.vignette >= 0 ? '0,0,0' : '255,255,255';
       const vOp = Math.abs(settings.vignette) / 100;
       grad.addColorStop(0, `rgba(${vColor}, 0)`);
       grad.addColorStop(1, `rgba(${vColor}, ${vOp})`);
       fCtx.fillStyle = grad;
-      fCtx.fillRect(0, 0, cropW, cropH);
+      fCtx.fillRect(0, 0, fW, fH);
   }
   
   // DYNAMIC BRAND WATERMARKING (FIXED WITH TEXT FALLBACK)
@@ -99,6 +109,8 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       fCtx.shadowBlur = 15; 
       fCtx.shadowOffsetY = 4;
 
+      const fW = finalCanvas.width, fH = finalCanvas.height;
+
       try {
           const logoImg = await new Promise((res, rej) => {
               const img = new Image(); 
@@ -107,26 +119,25 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
               img.src = '/lf_white.png';
           });
           
-          const targetWidth = Math.max(100, cropW * 0.15); 
+          const targetWidth = Math.max(100, fW * 0.15); 
           const targetHeight = logoImg.height * (targetWidth / logoImg.width);
-          const padding = Math.max(20, cropW * 0.03); 
+          const padding = Math.max(20, fW * 0.03); 
           
-          fCtx.drawImage(logoImg, cropW - targetWidth - padding, cropH - targetHeight - padding, targetWidth, targetHeight);
+          fCtx.drawImage(logoImg, fW - targetWidth - padding, fH - targetHeight - padding, targetWidth, targetHeight);
       } catch (err) { 
-          // FALLBACK: If lf_white.png is missing, draw text instead of failing silently
           console.warn("[LUMAFORGE_ASSET_FAULT] Watermark image missing. Using text fallback.");
-          const padding = Math.max(20, cropW * 0.03);
-          const fontSize = Math.max(24, cropW * 0.035);
+          const padding = Math.max(20, fW * 0.03);
+          const fontSize = Math.max(24, fW * 0.035);
           fCtx.font = `bold ${fontSize}px sans-serif`;
           fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
           fCtx.textAlign = "right";
           fCtx.textBaseline = "bottom";
-          fCtx.fillText("LUMAFORGE", cropW - padding, cropH - padding);
+          fCtx.fillText("LUMAFORGE", fW - padding, fH - padding);
       }
   }
   fCtx.restore();
 
-  // FIX: Wrapped the final export in a Promise so the UI knows exactly when it finishes
+  // EXPORT PROMISE
   return new Promise((resolve, reject) => {
       const mimeType = isPNG ? 'image/png' : 'image/jpeg';
       const quality = isPNG ? 1.0 : 0.95;
@@ -136,7 +147,6 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
           
           let finalBlob = blob;
           
-          // Only attempt steganography if the user explicitly chose PNG
           if (isPNG) {
               console.log("[LUMAFORGE_EXPORT] Encoding Black Box Data...");
               const projectPayload = { settings: settings, source: sourceBase64, timestamp: Date.now(), version: "4.3.1" };
@@ -153,14 +163,13 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
           link.click();
           
           URL.revokeObjectURL(link.href);
-          resolve(); // Resolves the promise, telling the UI to hide the loading animation
+          resolve(); 
       }, mimeType, quality);
   });
 };
 
 /**
  * Executes the full-resolution render and returns the Blob (for Cloud Uploads).
- * Always defaults to PNG to preserve Uplink remixing capabilities.
  */
 export const generateExportBlob = async (imageSrc, settings) => {
     if (!imageSrc) throw new Error("No source image provided.");
@@ -175,52 +184,52 @@ export const generateExportBlob = async (imageSrc, settings) => {
     }
 
     const rawRenderCanvas = await runCorePipeline(imageSrc, settings, null);
-    
+    const RW = rawRenderCanvas.width;
+    const RH = rawRenderCanvas.height;
+
+    let cropW = settings.aspectRatio === 'ORIGINAL' ? RW : (settings.crop.width / 100) * RW;
+    let cropH = settings.aspectRatio === 'ORIGINAL' ? RH : (settings.crop.height / 100) * RH;
+    let cropX = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.x / 100) * RW;
+    let cropY = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.y / 100) * RH;
+
+    const unrotatedCanvas = document.createElement('canvas');
+    unrotatedCanvas.width = cropW;
+    unrotatedCanvas.height = cropH;
+    const uCtx = unrotatedCanvas.getContext('2d');
+    uCtx.imageSmoothingEnabled = true;
+    uCtx.imageSmoothingQuality = 'high';
+
+    uCtx.translate(cropW/2, cropH/2);
+    const zoomScale = 1 + (settings.zoom / 100);
+    uCtx.scale(zoomScale, zoomScale);
+    uCtx.translate(-cropW/2, -cropH/2);
+    uCtx.drawImage(rawRenderCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+    const isRotated = settings.rotate === 90 || settings.rotate === 270;
     const finalCanvas = document.createElement('canvas');
-    let cropW, cropH, cropX, cropY;
-    
-    if (settings.aspectRatio === 'ORIGINAL') { 
-        cropW = rawRenderCanvas.width; cropH = rawRenderCanvas.height; cropX = 0; cropY = 0; 
-    } else { 
-        cropW = (settings.crop.width / 100) * rawRenderCanvas.width; 
-        cropH = (settings.crop.height / 100) * rawRenderCanvas.height; 
-        cropX = (settings.crop.x / 100) * rawRenderCanvas.width; 
-        cropY = (settings.crop.y / 100) * rawRenderCanvas.height; 
-    }
-    
-    finalCanvas.width = cropW;
-    finalCanvas.height = cropH;
+    finalCanvas.width = isRotated ? cropH : cropW;
+    finalCanvas.height = isRotated ? cropW : cropH;
     const fCtx = finalCanvas.getContext('2d');
-    
     fCtx.imageSmoothingEnabled = true;
     fCtx.imageSmoothingQuality = 'high';
-    fCtx.save();
-    
-    fCtx.translate(cropW/2, cropH/2);
+
+    fCtx.translate(finalCanvas.width/2, finalCanvas.height/2);
     fCtx.rotate((settings.rotate * Math.PI) / 180);
     fCtx.scale(settings.flipX ? -1 : 1, settings.flipY ? -1 : 1);
-    
-    const rad = (settings.rotate * Math.PI) / 180;
-    const autoScale = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad));
-    fCtx.scale(autoScale, autoScale);
-    
-    const zoomScale = 1 + (settings.zoom / 100);
-    fCtx.scale(zoomScale, zoomScale);
-    
     fCtx.translate(-cropW/2, -cropH/2);
-    fCtx.translate(-cropX, -cropY);
-    fCtx.drawImage(rawRenderCanvas, 0, 0);
+    fCtx.drawImage(unrotatedCanvas, 0, 0);
 
     if (settings.vignette !== 0) {
         fCtx.setTransform(1, 0, 0, 1, 0, 0); 
         fCtx.globalCompositeOperation = 'source-over';
-        const grad = fCtx.createRadialGradient(cropW/2, cropH/2, cropW * 0.4, cropW/2, cropH/2, cropW * 1.2);
+        const fW = finalCanvas.width, fH = finalCanvas.height;
+        const grad = fCtx.createRadialGradient(fW/2, fH/2, fW * 0.4, fW/2, fH/2, fW * 1.2);
         const vColor = settings.vignette >= 0 ? '0,0,0' : '255,255,255';
         const vOp = Math.abs(settings.vignette) / 100;
         grad.addColorStop(0, `rgba(${vColor}, 0)`);
         grad.addColorStop(1, `rgba(${vColor}, ${vOp})`);
         fCtx.fillStyle = grad;
-        fCtx.fillRect(0, 0, cropW, cropH);
+        fCtx.fillRect(0, 0, fW, fH);
     }
     
     if (settings.watermark) {
@@ -230,6 +239,7 @@ export const generateExportBlob = async (imageSrc, settings) => {
         fCtx.shadowColor = "rgba(0,0,0,0.85)";
         fCtx.shadowBlur = 15; 
         fCtx.shadowOffsetY = 4;
+        const fW = finalCanvas.width, fH = finalCanvas.height;
         try {
             const logoImg = await new Promise((res, rej) => {
                 const img = new Image(); 
@@ -237,18 +247,18 @@ export const generateExportBlob = async (imageSrc, settings) => {
                 img.onerror = rej; 
                 img.src = '/lf_white.png';
             });
-            const targetWidth = Math.max(100, cropW * 0.15); 
+            const targetWidth = Math.max(100, fW * 0.15); 
             const targetHeight = logoImg.height * (targetWidth / logoImg.width);
-            const padding = Math.max(20, cropW * 0.03); 
-            fCtx.drawImage(logoImg, cropW - targetWidth - padding, cropH - targetHeight - padding, targetWidth, targetHeight);
+            const padding = Math.max(20, fW * 0.03); 
+            fCtx.drawImage(logoImg, fW - targetWidth - padding, fH - targetHeight - padding, targetWidth, targetHeight);
         } catch (err) { 
-            const padding = Math.max(20, cropW * 0.03);
-            const fontSize = Math.max(24, cropW * 0.035);
+            const padding = Math.max(20, fW * 0.03);
+            const fontSize = Math.max(24, fW * 0.035);
             fCtx.font = `bold ${fontSize}px sans-serif`;
             fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
             fCtx.textAlign = "right";
             fCtx.textBaseline = "bottom";
-            fCtx.fillText("LUMAFORGE", cropW - padding, cropH - padding);
+            fCtx.fillText("LUMAFORGE", fW - padding, fH - padding);
         }
     }
     fCtx.restore();

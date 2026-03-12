@@ -2,7 +2,7 @@
  * @file App.jsx
  * @description The central orchestrator and state-machine for LUMAFORGE.
  * Handles global routing, session authentication, undo/redo history stacks, 
- * and the deferred-intent pipeline for file uploads.
+ * and local file processing.
  */
 
 import React, { useState, useEffect, useCallback, useRef, useDeferredValue } from 'react';
@@ -111,7 +111,6 @@ export default function App() {
   
   const [history, setHistory] = useState({ past: [], future: [] });
   const [uiKey, setUiKey] = useState(0);
-  const [pendingFile, setPendingFile] = useState(null); 
   const fileInputRef = useRef(null);
   
   const settingsRef = useRef(settings);
@@ -130,7 +129,6 @@ export default function App() {
         setSettings(getFreshState());
         setHistory({ past: [], future: [] });
         setShowCloud(false);
-        setPendingFile(null); 
     }
   };
 
@@ -176,7 +174,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  // FIXED: Flawless parsing and geometry synchronization for imports
   const processFile = useCallback(async (file) => {
       if (file.name.toLowerCase().endsWith('.cube')) {
           const reader = new FileReader();
@@ -194,11 +191,9 @@ export default function App() {
       let visualUrl = URL.createObjectURL(file);
       let projectData = null;
 
-      // Extract the metadata payload safely
       if (file.type === 'image/png') {
           try { 
               const rawMeta = await readMetadata(file); 
-              // Bulletproof check: Ensure it is parsed to an Object, never a string
               projectData = typeof rawMeta === 'string' ? JSON.parse(rawMeta) : rawMeta;
           } catch (err) { 
               console.warn("[LUMAFORGE_META] No readable payload found."); 
@@ -208,21 +203,16 @@ export default function App() {
       let nextImage = visualUrl;
       let savedSettings = null;
 
-      // Extract settings BEFORE loading the image to prevent freezing the UI thread
       if (projectData && window.confirm("LUMAFORGE Project Detected.\n[OK] Restore Edits\n[Cancel] Import Clean")) {
           savedSettings = projectData.settings || projectData;
-          
-          // Double failsafe: parse nested stringifications
           if (typeof savedSettings === 'string') {
               try { savedSettings = JSON.parse(savedSettings); } catch(e) {}
           }
-          
           if (projectData.source) {
-              nextImage = projectData.source; // Switch canvas source to the pure uncompressed negative
+              nextImage = projectData.source;
           }
       }
 
-      // We MUST measure the physical dimensions of the FINAL image source, not the cropped thumbnail
       const img = new Image();
       img.onload = () => {
           let nextSettings = { 
@@ -230,12 +220,10 @@ export default function App() {
               imageDimensions: { w: img.naturalWidth, h: img.naturalHeight, ratio: img.naturalWidth / img.naturalHeight } 
           };
 
-          // Safely merge the decoded settings
           if (savedSettings && typeof savedSettings === 'object') {
               nextSettings = { 
                   ...nextSettings, 
                   ...savedSettings, 
-                  // CRITICAL: Force the dimensions to match the newly loaded source image
                   imageDimensions: nextSettings.imageDimensions 
               };
           }
@@ -247,31 +235,17 @@ export default function App() {
           setView('BOOT_TO_EDITOR');
       };
       
-      // Load the image into the DOM to trigger the calculation
       img.src = nextImage;
   }, [pushToHistory]);
 
+  // FIX: Unlocked file upload. Any user can now open a file immediately.
   const handleUpload = (e) => {
       const file = e.target.files[0];
       if (!file) return;
-
-      if (!session) {
-          setPendingFile(file);
-          setView('BOOT_TO_LOGIN');
-          return;
-      }
-      processFile(file);
+      processFile(file); // Bypasses the session check entirely
   };
 
-  useEffect(() => {
-      if (session && pendingFile) {
-          processFile(pendingFile);
-          setPendingFile(null); 
-      }
-  }, [session, pendingFile, processFile]);
-
   const handleAbortLogin = () => {
-      setPendingFile(null); 
       setView('BOOT_TO_HOME');
   };
 
@@ -292,7 +266,7 @@ export default function App() {
   };
 
   const handleSaveToCloud = async () => {
-      if (!session) return alert("UPLINK OFFLINE.");
+      if (!session) return alert("UPLINK OFFLINE. Please connect to the Uplink (Login) to save presets.");
       const { count } = await supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', session.user.id);
       if (count >= 50) {
           alert("CRITICAL: UPLINK CAPACITY REACHED (50/50). Please delete old presets to save new ones.");

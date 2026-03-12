@@ -234,7 +234,6 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
   
   const update = useCallback((key, val) => setSettings(p => ({ ...p, [key]: val })), [setSettings]);
 
-  // SMART ASPECT RATIO TOGGLE (Handles 16:9 -> 9:16 rotation)
   const applyAspect = useCallback((baseRatioName) => {
       onSnapshot(); 
       setSettings(prev => {
@@ -248,7 +247,6 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
           let newRatioName = baseRatioName;
           const flippedBase = baseRatioName.includes(':') ? baseRatioName.split(':').reverse().join(':') : null;
 
-          // If the ratio is already active, flip it!
           if (prev.aspectRatio === baseRatioName && baseRatioName !== '1:1') {
               newRatioName = flippedBase;
           } else if (prev.aspectRatio === flippedBase) {
@@ -311,9 +309,27 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
            <div className="control-section">
              <div className="panel-header">GEOMETRY</div>
              <div className="btn-grid-2">
-                <button onClick={()=>{onSnapshot(); update('rotate', (settings.rotate-90)%360);}}>ROTATE L</button>
-                <button onClick={()=>{onSnapshot(); update('rotate', (settings.rotate+90)%360);}}>ROTATE R</button>
-                {/* RENAMED TO FLIP HORIZONTAL / VERTICAL */}
+                {/* FIX: Reset crop bounds when rotating to prevent coordinate desync */}
+                <button onClick={()=>{
+                    onSnapshot(); 
+                    setSettings(p => ({ 
+                        ...p, 
+                        rotate: (p.rotate - 90 + 360) % 360, 
+                        cropApplied: false, 
+                        aspectRatio: 'ORIGINAL', 
+                        crop: { x: 10, y: 10, width: 80, height: 80, aspect: null } 
+                    }));
+                }}>ROTATE L</button>
+                <button onClick={()=>{
+                    onSnapshot(); 
+                    setSettings(p => ({ 
+                        ...p, 
+                        rotate: (p.rotate + 90) % 360, 
+                        cropApplied: false, 
+                        aspectRatio: 'ORIGINAL', 
+                        crop: { x: 10, y: 10, width: 80, height: 80, aspect: null } 
+                    }));
+                }}>ROTATE R</button>
                 <button onClick={()=>{onSnapshot(); update('flipX', !settings.flipX);}}>FLIP HORIZONTAL</button>
                 <button onClick={()=>{onSnapshot(); update('flipY', !settings.flipY);}}>FLIP VERTICAL</button>
              </div>
