@@ -230,7 +230,7 @@ const GradeControl = memo(({ label, tone, settings, setSettings, onSnapshot }) =
     );
 });
 
-const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnapshot, onReset, image }) => {
+const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnapshot, onReset, image, session, onRequireAuth }) => {
   
   const update = useCallback((key, val) => setSettings(p => ({ ...p, [key]: val })), [setSettings]);
 
@@ -309,7 +309,6 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
            <div className="control-section">
              <div className="panel-header">GEOMETRY</div>
              <div className="btn-grid-2">
-                {/* FIX: Reset crop bounds when rotating to prevent coordinate desync */}
                 <button onClick={()=>{
                     onSnapshot(); 
                     setSettings(p => ({ 
@@ -444,15 +443,48 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
               <Histogram imageSrc={image} exposure={settings.exposure} contrast={settings.contrast} whites={settings.whites} blacks={settings.blacks} shadows={settings.shadows} highlights={settings.highlights}/>
               
               <div style={{marginTop: 20}}>
-                  <button onClick={() => update('watermark', !settings.watermark)} className={`btn-toggle ${settings.watermark?'active':''}`}>
-                      {settings.watermark ? 'WATERMARK: ON' : 'WATERMARK: OFF'}
+                  <button 
+                      onClick={() => {
+                          if (!session) {
+                              onRequireAuth(); 
+                              return;
+                          }
+                          update('watermark', !settings.watermark);
+                      }} 
+                      className={`btn-toggle ${settings.watermark && session ? 'active' : ''}`} 
+                      style={{
+                          marginBottom: 10, 
+                          opacity: session ? 1 : 0.6,
+                          borderColor: !session ? '#444' : ''
+                      }}
+                  >
+                      {!session ? '🔒 WATERMARK (LOGIN REQUIRED)' : (settings.watermark ? 'WATERMARK: ACTIVE' : 'WATERMARK: INACTIVE')}
                   </button>
+
+                  {settings.watermark && session && (
+                      <div className="control-subgroup" style={{background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 4, border: '1px solid #333'}}>
+                          <div className="control-header" style={{marginBottom: 5}}><label>CREATOR IDENT</label></div>
+                          <input 
+                              type="text" 
+                              value={settings.watermarkUser || ''} 
+                              onChange={e => update('watermarkUser', e.target.value)} 
+                              style={{width: '100%', background: '#0a0a0a', border: '1px solid #444', color: 'var(--accent)', padding: '6px 10px', fontFamily: 'var(--font-mono)', fontSize: 11, marginBottom: 10, boxSizing: 'border-box'}}
+                              placeholder="username"
+                          />
+                          
+                          <div className="control-header" style={{marginBottom: 5}}><label>ALIGNMENT</label></div>
+                          <div className="btn-grid-3">
+                              <button onClick={()=>update('watermarkAlign', 'left')} className={settings.watermarkAlign === 'left' ? 'active' : ''}>← LEFT</button>
+                              <button onClick={()=>update('watermarkAlign', 'center')} className={settings.watermarkAlign === 'center' ? 'active' : ''}>↔ CTR</button>
+                              <button onClick={()=>update('watermarkAlign', 'right')} className={settings.watermarkAlign === 'right' ? 'active' : ''}>→ RIGHT</button>
+                          </div>
+                      </div>
+                  )}
               </div>
            </div>
         )}
       </div>
 
-      {/* --- FOOTER ACTION BAR --- */}
       <div className="action-bar">
         <button className="btn-reset" onClick={onReset}>RESET ALL</button>
       </div>

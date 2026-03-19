@@ -15,12 +15,6 @@ const blobToBase64 = (blob) => new Promise((res, rej) => {
     reader.readAsDataURL(blob);
 });
 
-/**
- * Executes the full-resolution render and triggers the browser download protocol.
- * @param {string} imageSrc - The URI of the original source image.
- * @param {Object} settings - The complete LUMAFORGE mathematical state.
- * @param {string} format - 'jpeg' or 'png'. Default is 'jpeg'.
- */
 export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   if (!imageSrc) return;
 
@@ -28,7 +22,6 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   let sourceBase64 = null;
   const isPNG = format === 'png';
 
-  // Only archive the heavy Base64 source if we are exporting a PNG for Steganography
   if (isPNG) {
       try {
           const response = await fetch(imageSrc);
@@ -50,9 +43,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   let cropX = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.x / 100) * RW;
   let cropY = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.y / 100) * RH;
 
-  // ---------------------------------------------------------
   // STAGE 1: Extract the Cropped Region Unrotated
-  // ---------------------------------------------------------
   const unrotatedCanvas = document.createElement('canvas');
   unrotatedCanvas.width = cropW;
   unrotatedCanvas.height = cropH;
@@ -66,13 +57,10 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   uCtx.translate(-cropW/2, -cropH/2);
   uCtx.drawImage(rawRenderCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-  // ---------------------------------------------------------
   // STAGE 2: Rotate and Flip on an Expanding Canvas
-  // ---------------------------------------------------------
   const isRotated = settings.rotate === 90 || settings.rotate === 270;
   const finalCanvas = document.createElement('canvas');
   
-  // SWAP WIDTH AND HEIGHT IF ROTATED TO PREVENT CLIPPING
   finalCanvas.width = isRotated ? cropH : cropW;
   finalCanvas.height = isRotated ? cropW : cropH;
   
@@ -86,7 +74,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   fCtx.translate(-cropW/2, -cropH/2);
   fCtx.drawImage(unrotatedCanvas, 0, 0);
 
-  // VIGNETTE (Applied to the final expanding canvas)
+  // VIGNETTE 
   if (settings.vignette !== 0) {
       fCtx.setTransform(1, 0, 0, 1, 0, 0); 
       fCtx.globalCompositeOperation = 'source-over';
@@ -100,44 +88,100 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       fCtx.fillRect(0, 0, fW, fH);
   }
   
-  // DYNAMIC BRAND WATERMARKING (FIXED WITH TEXT FALLBACK)
+  // UNIFIED & ALIGNABLE WATERMARK ENGINE
   if (settings.watermark) {
+      console.log("[LUMAFORGE_EXPORT] Synthesizing Watermark Geometry Stack...");
+      
+      const fW = finalCanvas.width;
+      const fH = finalCanvas.height;
+      const padding = Math.max(20, fW * 0.03); 
+
       fCtx.setTransform(1, 0, 0, 1, 0, 0); 
       fCtx.globalCompositeOperation = 'source-over';
-      fCtx.globalAlpha = 0.6; // Increased visibility
+      fCtx.globalAlpha = 0.6; 
       fCtx.shadowColor = "rgba(0,0,0,0.85)";
-      fCtx.shadowBlur = 15; 
-      fCtx.shadowOffsetY = 4;
+      fCtx.shadowBlur = Math.max(10, fW * 0.01); 
+      fCtx.shadowOffsetY = Math.max(2, fW * 0.002);
 
-      const fW = finalCanvas.width, fH = finalCanvas.height;
+      let logoImg = null;
+      let logoWidth = 0;
+      let logoHeight = 0;
+      let stackWidth = 0;
+      let stackHeight = 0;
+      
+      const fontSize = Math.max(20, fW * 0.025); 
+      fCtx.font = `bold ${fontSize}px monospace`; 
+      const usernameText = settings.watermarkUser || 'sganeshe';
+      const userTextMetrics = fCtx.measureText(usernameText);
+      const userTextWidth = userTextMetrics.width;
+
+      const mainText = "LUMAFORGE";
+      const mainTextMetrics = fCtx.measureText(mainText);
+      const mainTextWidth = mainTextMetrics.width;
 
       try {
-          const logoImg = await new Promise((res, rej) => {
+          logoImg = await new Promise((res, rej) => {
               const img = new Image(); 
               img.onload = () => res(img); 
               img.onerror = rej; 
-              img.src = '/lf_white.png';
+              img.src = '/lf_white.png'; 
           });
           
-          const targetWidth = Math.max(100, fW * 0.15); 
-          const targetHeight = logoImg.height * (targetWidth / logoImg.width);
-          const padding = Math.max(20, fW * 0.03); 
+          logoWidth = Math.max(80, fW * 0.12); 
+          logoHeight = logoImg.height * (logoWidth / logoImg.width);
           
-          fCtx.drawImage(logoImg, fW - targetWidth - padding, fH - targetHeight - padding, targetWidth, targetHeight);
+          stackWidth = Math.max(logoWidth, userTextWidth);
+          stackHeight = logoHeight + (fontSize * 1.2); 
       } catch (err) { 
-          console.warn("[LUMAFORGE_ASSET_FAULT] Watermark image missing. Using text fallback.");
-          const padding = Math.max(20, fW * 0.03);
-          const fontSize = Math.max(24, fW * 0.035);
-          fCtx.font = `bold ${fontSize}px sans-serif`;
-          fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
-          fCtx.textAlign = "right";
-          fCtx.textBaseline = "bottom";
-          fCtx.fillText("LUMAFORGE", fW - padding, fH - padding);
+          console.warn("[LUMAFORGE_ASSET_FAULT] Watermark image missing. Using dual-text stack.");
+          logoWidth = 0;
+          logoHeight = 0;
+          stackWidth = Math.max(mainTextWidth, userTextWidth);
+          stackHeight = fontSize * 2.2; 
       }
-  }
-  fCtx.restore();
 
-  // EXPORT PROMISE
+      let finalX = 0;
+      switch (settings.watermarkAlign) {
+          case 'left':
+              finalX = padding;
+              break;
+          case 'center':
+              finalX = (fW / 2) - (stackWidth / 2);
+              break;
+          case 'right':
+          default:
+              finalX = fW - stackWidth - padding;
+              break;
+      }
+
+      fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
+      
+      if (settings.watermarkAlign === 'center') {
+          fCtx.textAlign = "center";
+          const centerX = finalX + (stackWidth / 2); 
+          
+          if (logoImg) {
+              fCtx.drawImage(logoImg, centerX - (logoWidth/2), fH - stackHeight - padding, logoWidth, logoHeight);
+          } else {
+              fCtx.fillText(mainText, centerX, fH - stackHeight - padding + fontSize);
+          }
+          fCtx.fillText(usernameText, centerX, fH - padding);
+      } else {
+          fCtx.textAlign = settings.watermarkAlign; 
+          
+          const textX = settings.watermarkAlign === 'left' ? finalX : finalX + stackWidth;
+          const logoDrawX = settings.watermarkAlign === 'left' ? finalX : finalX + (stackWidth - logoWidth);
+
+          if (logoImg) {
+              fCtx.drawImage(logoImg, logoDrawX, fH - stackHeight - padding, logoWidth, logoHeight);
+          } else {
+              fCtx.fillText(mainText, textX, fH - stackHeight - padding + fontSize);
+          }
+          fCtx.fillText(usernameText, textX, fH - padding);
+      }
+      fCtx.restore();
+  }
+
   return new Promise((resolve, reject) => {
       const mimeType = isPNG ? 'image/png' : 'image/jpeg';
       const quality = isPNG ? 1.0 : 0.95;
@@ -168,9 +212,6 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   });
 };
 
-/**
- * Executes the full-resolution render and returns the Blob (for Cloud Uploads).
- */
 export const generateExportBlob = async (imageSrc, settings) => {
     if (!imageSrc) throw new Error("No source image provided.");
 
@@ -179,9 +220,7 @@ export const generateExportBlob = async (imageSrc, settings) => {
         const response = await fetch(imageSrc);
         const blob = await response.blob();
         sourceBase64 = await blobToBase64(blob);
-    } catch (e) { 
-        console.warn("Could not archive source image."); 
-    }
+    } catch (e) { }
 
     const rawRenderCanvas = await runCorePipeline(imageSrc, settings, null);
     const RW = rawRenderCanvas.width;
@@ -232,47 +271,78 @@ export const generateExportBlob = async (imageSrc, settings) => {
         fCtx.fillRect(0, 0, fW, fH);
     }
     
+    // Cloud blobs apply watermark if set
     if (settings.watermark) {
-        fCtx.setTransform(1, 0, 0, 1, 0, 0); 
-        fCtx.globalCompositeOperation = 'source-over';
-        fCtx.globalAlpha = 0.6; 
-        fCtx.shadowColor = "rgba(0,0,0,0.85)";
-        fCtx.shadowBlur = 15; 
-        fCtx.shadowOffsetY = 4;
-        const fW = finalCanvas.width, fH = finalCanvas.height;
-        try {
-            const logoImg = await new Promise((res, rej) => {
-                const img = new Image(); 
-                img.onload = () => res(img); 
-                img.onerror = rej; 
-                img.src = '/lf_white.png';
-            });
-            const targetWidth = Math.max(100, fW * 0.15); 
-            const targetHeight = logoImg.height * (targetWidth / logoImg.width);
-            const padding = Math.max(20, fW * 0.03); 
-            fCtx.drawImage(logoImg, fW - targetWidth - padding, fH - targetHeight - padding, targetWidth, targetHeight);
-        } catch (err) { 
-            const padding = Math.max(20, fW * 0.03);
-            const fontSize = Math.max(24, fW * 0.035);
-            fCtx.font = `bold ${fontSize}px sans-serif`;
-            fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
-            fCtx.textAlign = "right";
-            fCtx.textBaseline = "bottom";
-            fCtx.fillText("LUMAFORGE", fW - padding, fH - padding);
-        }
+      const fW = finalCanvas.width;
+      const fH = finalCanvas.height;
+      const padding = Math.max(20, fW * 0.03); 
+
+      fCtx.setTransform(1, 0, 0, 1, 0, 0); 
+      fCtx.globalCompositeOperation = 'source-over';
+      fCtx.globalAlpha = 0.6; 
+      fCtx.shadowColor = "rgba(0,0,0,0.85)";
+      fCtx.shadowBlur = Math.max(10, fW * 0.01); 
+      fCtx.shadowOffsetY = Math.max(2, fW * 0.002);
+
+      let logoImg = null;
+      let logoWidth = 0; let logoHeight = 0;
+      let stackWidth = 0; let stackHeight = 0;
+      
+      const fontSize = Math.max(20, fW * 0.025); 
+      fCtx.font = `bold ${fontSize}px monospace`; 
+      const usernameText = settings.watermarkUser || 'sganeshe';
+      const userTextMetrics = fCtx.measureText(usernameText);
+      const userTextWidth = userTextMetrics.width;
+
+      const mainText = "LUMAFORGE";
+      const mainTextMetrics = fCtx.measureText(mainText);
+      const mainTextWidth = mainTextMetrics.width;
+
+      try {
+          logoImg = await new Promise((res, rej) => {
+              const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = '/lf_white.png'; 
+          });
+          logoWidth = Math.max(80, fW * 0.12); 
+          logoHeight = logoImg.height * (logoWidth / logoImg.width);
+          stackWidth = Math.max(logoWidth, userTextWidth);
+          stackHeight = logoHeight + (fontSize * 1.2); 
+      } catch (err) { 
+          logoWidth = 0; logoHeight = 0;
+          stackWidth = Math.max(mainTextWidth, userTextWidth);
+          stackHeight = fontSize * 2.2; 
+      }
+
+      let finalX = 0;
+      switch (settings.watermarkAlign) {
+          case 'left': finalX = padding; break;
+          case 'center': finalX = (fW / 2) - (stackWidth / 2); break;
+          case 'right': default: finalX = fW - stackWidth - padding; break;
+      }
+
+      fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
+      if (settings.watermarkAlign === 'center') {
+          fCtx.textAlign = "center";
+          const centerX = finalX + (stackWidth / 2); 
+          if (logoImg) fCtx.drawImage(logoImg, centerX - (logoWidth/2), fH - stackHeight - padding, logoWidth, logoHeight);
+          else fCtx.fillText(mainText, centerX, fH - stackHeight - padding + fontSize);
+          fCtx.fillText(usernameText, centerX, fH - padding);
+      } else {
+          fCtx.textAlign = settings.watermarkAlign; 
+          const textX = settings.watermarkAlign === 'left' ? finalX : finalX + stackWidth;
+          const logoDrawX = settings.watermarkAlign === 'left' ? finalX : finalX + (stackWidth - logoWidth);
+          if (logoImg) fCtx.drawImage(logoImg, logoDrawX, fH - stackHeight - padding, logoWidth, logoHeight);
+          else fCtx.fillText(mainText, textX, fH - stackHeight - padding + fontSize);
+          fCtx.fillText(usernameText, textX, fH - padding);
+      }
+      fCtx.restore();
     }
-    fCtx.restore();
 
     return new Promise((resolve, reject) => {
         finalCanvas.toBlob(async (blob) => {
             if (!blob) return reject(new Error("Canvas toBlob failed."));
             const projectPayload = { settings, source: sourceBase64, timestamp: Date.now(), version: "4.3.1" };
             let finalBlob = blob;
-            try { 
-                finalBlob = await injectMetadata(blob, projectPayload); 
-            } catch (e) { 
-                console.warn("Steganography failed.", e); 
-            }
+            try { finalBlob = await injectMetadata(blob, projectPayload); } catch (e) { }
             resolve(finalBlob); 
         }, 'image/png', 1.0);
     });

@@ -127,7 +127,7 @@ export const LeftSidebar = ({
                 
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                     <img src="/lf_orange.png" alt="LUMAFORGE" style={{ height: '22px', objectFit: 'contain' }} />
-                    <div className="version" style={{ marginTop: '4px', fontSize: '8px' }}>v1.1.0</div>
+                    <div className="version" style={{ marginTop: '4px', fontSize: '8px' }}>v1.1.1</div>
                 </div>
             </div>
 
