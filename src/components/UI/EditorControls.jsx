@@ -481,7 +481,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
                           />
                           
                           <div className="control-header" style={{marginBottom: 5}}><label>ALIGNMENT</label></div>
-                          <div className="btn-grid-3">
+                          <div className="btn-grid-2">
                               <button onClick={()=>update('watermarkAlign', 'left')} className={settings.watermarkAlign === 'left' ? 'active' : ''}>← LEFT</button>
                               <button onClick={()=>update('watermarkAlign', 'center')} className={settings.watermarkAlign === 'center' ? 'active' : ''}>↔ CTR</button>
                               <button onClick={()=>update('watermarkAlign', 'right')} className={settings.watermarkAlign === 'right' ? 'active' : ''}>→ RIGHT</button>
