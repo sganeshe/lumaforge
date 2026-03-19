@@ -61,6 +61,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   const isRotated = settings.rotate === 90 || settings.rotate === 270;
   const finalCanvas = document.createElement('canvas');
   
+  // SWAP WIDTH AND HEIGHT IF ROTATED TO PREVENT CLIPPING
   finalCanvas.width = isRotated ? cropH : cropW;
   finalCanvas.height = isRotated ? cropW : cropH;
   
@@ -88,7 +89,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       fCtx.fillRect(0, 0, fW, fH);
   }
   
-  // UNIFIED & ALIGNABLE WATERMARK ENGINE
+  // UNIFIED & ALIGNABLE WATERMARK ENGINE (Stacks stacked logo & text)
   if (settings.watermark) {
       console.log("[LUMAFORGE_EXPORT] Synthesizing Watermark Geometry Stack...");
       
@@ -96,9 +97,10 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       const fH = finalCanvas.height;
       const padding = Math.max(20, fW * 0.03); 
 
+      // Reset transforms and apply global style for the whole stack
       fCtx.setTransform(1, 0, 0, 1, 0, 0); 
       fCtx.globalCompositeOperation = 'source-over';
-      fCtx.globalAlpha = 0.6; 
+      fCtx.globalAlpha = 0.6; // Subtle transparency
       fCtx.shadowColor = "rgba(0,0,0,0.85)";
       fCtx.shadowBlur = Math.max(10, fW * 0.01); 
       fCtx.shadowOffsetY = Math.max(2, fW * 0.002);
@@ -109,8 +111,9 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       let stackWidth = 0;
       let stackHeight = 0;
       
+      // Calculate Font Geometry FIRST
       const fontSize = Math.max(20, fW * 0.025); 
-      fCtx.font = `bold ${fontSize}px monospace`; 
+      fCtx.font = `bold ${fontSize}px monospace`; // High-contrast monospace
       const usernameText = settings.watermarkUser || 'sganeshe';
       const userTextMetrics = fCtx.measureText(usernameText);
       const userTextWidth = userTextMetrics.width;
@@ -119,6 +122,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       const mainTextMetrics = fCtx.measureText(mainText);
       const mainTextWidth = mainTextMetrics.width;
 
+      // 1. ATTEMPT LOGO GEOMETRY CALCULATION
       try {
           logoImg = await new Promise((res, rej) => {
               const img = new Image(); 
@@ -127,12 +131,15 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
               img.src = '/lf_white.png'; 
           });
           
-          logoWidth = Math.max(80, fW * 0.12); 
+          logoWidth = Math.max(80, fW * 0.12); // Dynamic logo width
           logoHeight = logoImg.height * (logoWidth / logoImg.width);
           
+          // Total stack width is wider element
           stackWidth = Math.max(logoWidth, userTextWidth);
+          // Logo + gap (20%) + Username
           stackHeight = logoHeight + (fontSize * 1.2); 
       } catch (err) { 
+          // 2. FALLBACK: TEXT-ONLY STACK (If logo fails)
           console.warn("[LUMAFORGE_ASSET_FAULT] Watermark image missing. Using dual-text stack.");
           logoWidth = 0;
           logoHeight = 0;
@@ -140,6 +147,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
           stackHeight = fontSize * 2.2; 
       }
 
+      // 3. CALCULATE X-POSITION BASED ON ALIGNMENT
       let finalX = 0;
       switch (settings.watermarkAlign) {
           case 'left':
@@ -154,6 +162,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
               break;
       }
 
+      // 4. DRAWING LOOP
       fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
       
       if (settings.watermarkAlign === 'center') {
@@ -166,7 +175,9 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
               fCtx.fillText(mainText, centerX, fH - stackHeight - padding + fontSize);
           }
           fCtx.fillText(usernameText, centerX, fH - padding);
+
       } else {
+          // Left or Right aligned stack. 
           fCtx.textAlign = settings.watermarkAlign; 
           
           const textX = settings.watermarkAlign === 'left' ? finalX : finalX + stackWidth;

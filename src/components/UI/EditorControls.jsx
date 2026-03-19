@@ -230,10 +230,12 @@ const GradeControl = memo(({ label, tone, settings, setSettings, onSnapshot }) =
     );
 });
 
+// Added session and onRequireAuth props to EditorControls
 const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnapshot, onReset, image, session, onRequireAuth }) => {
   
   const update = useCallback((key, val) => setSettings(p => ({ ...p, [key]: val })), [setSettings]);
 
+  // SMART ASPECT RATIO TOGGLE (Handles 16:9 -> 9:16 rotation desync fix)
   const applyAspect = useCallback((baseRatioName) => {
       onSnapshot(); 
       setSettings(prev => {
@@ -247,6 +249,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
           let newRatioName = baseRatioName;
           const flippedBase = baseRatioName.includes(':') ? baseRatioName.split(':').reverse().join(':') : null;
 
+          // If the ratio is already active, flip it!
           if (prev.aspectRatio === baseRatioName && baseRatioName !== '1:1') {
               newRatioName = flippedBase;
           } else if (prev.aspectRatio === flippedBase) {
@@ -309,6 +312,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
            <div className="control-section">
              <div className="panel-header">GEOMETRY</div>
              <div className="btn-grid-2">
+                {/* FIX: Reset crop bounds when rotating to prevent coordinate desync */}
                 <button onClick={()=>{
                     onSnapshot(); 
                     setSettings(p => ({ 
@@ -329,6 +333,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
                         crop: { x: 10, y: 10, width: 80, height: 80, aspect: null } 
                     }));
                 }}>ROTATE R</button>
+                {/* RENAMED TO FLIP HORIZONTAL / VERTICAL */}
                 <button onClick={()=>{onSnapshot(); update('flipX', !settings.flipX);}}>FLIP HORIZONTAL</button>
                 <button onClick={()=>{onSnapshot(); update('flipY', !settings.flipY);}}>FLIP VERTICAL</button>
              </div>
@@ -443,10 +448,12 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
               <Histogram imageSrc={image} exposure={settings.exposure} contrast={settings.contrast} whites={settings.whites} blacks={settings.blacks} shadows={settings.shadows} highlights={settings.highlights}/>
               
               <div style={{marginTop: 20}}>
+                  
+                  {/* AUTH-LOCKED WATERMARK TOGGLE (UI fix) */}
                   <button 
                       onClick={() => {
                           if (!session) {
-                              onRequireAuth(); 
+                              onRequireAuth(); // Route to login screen
                               return;
                           }
                           update('watermark', !settings.watermark);
@@ -461,6 +468,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
                       {!session ? '🔒 WATERMARK (LOGIN REQUIRED)' : (settings.watermark ? 'WATERMARK: ACTIVE' : 'WATERMARK: INACTIVE')}
                   </button>
 
+                  {/* ALIGNABLE CREATOR SETTINGS (renders only if active AND logged in) */}
                   {settings.watermark && session && (
                       <div className="control-subgroup" style={{background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 4, border: '1px solid #333'}}>
                           <div className="control-header" style={{marginBottom: 5}}><label>CREATOR IDENT</label></div>

@@ -1,6 +1,7 @@
 /**
  * @file App.jsx
  * @description The central orchestrator and state-machine for LUMAFORGE.
+ * Handles routing, session auth, undo/redo stacks, and local file imports.
  */
 
 import React, { useState, useEffect, useCallback, useRef, useDeferredValue } from 'react';
@@ -25,6 +26,10 @@ import { supabase } from './lib/supabaseClient';
 import { getFreshState } from './utils/constants'; 
 import { useSystemClock } from './hooks/useSystemClock'; 
 import './styles/index.css'; 
+
+/* =========================================================================
+   PRESENTATIONAL COMPONENTS (ROUTING VIEWS)
+   ========================================================================= */
 
 const BootScreen = ({ onComplete }) => {
   useEffect(() => { setTimeout(onComplete, 2200); }, [onComplete]);
@@ -72,10 +77,11 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
             <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_DIAGNOSTICS')}>[ SYSTEM DIAGNOSTICS ]</button>
             <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_MANUAL')}>[ OPTICS MANUAL ]</button>
         </div>
+
       </div>
 
       <div className="home-footer">
-        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.1.1</span></div>
+        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.0.0</span></div>
         <div className="footer-row links">
            <span style={{color: '#fff'}}>CREATOR: SAUMYA GANESHE</span>
            <a href="https://github.com/sganeshe" target="_blank" rel="noreferrer">[ GITHUB ]</a>
@@ -87,6 +93,10 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
   );
 };
 
+/* =========================================================================
+   MAIN APPLICATION ORCHESTRATOR
+   ========================================================================= */
+
 export default function App() {
   const [view, setView] = useState('BOOT'); 
   const [session, setSession] = useState(null);
@@ -95,11 +105,12 @@ export default function App() {
   const [image, setImage] = useState(null);
   const [activeTab, setActiveTab] = useState('EDIT');
   
-  // Appended the new watermark state parameters to the fresh state load
+  // Appended new watermark parameters (alignable stacked) to fresh state
   const [settings, setSettings] = useState({
       ...getFreshState(),
-      watermarkUser: '',
-      watermarkAlign: 'right'
+      watermark: false,
+      watermarkUser: 'sganeshe', // The creator ident
+      watermarkAlign: 'right',   // Default bottom-right stack alignment
   });
   
   const deferredSettings = useDeferredValue(settings);
@@ -110,6 +121,7 @@ export default function App() {
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
+  // Auth Listener (Auth0 or Supabase as seen in original code)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
@@ -120,7 +132,7 @@ export default function App() {
     if (window.confirm("SYSTEM WARNING: Returning to home will discard all unsaved edits. Proceed?")) {
         setView('BOOT_TO_HOME');
         setImage(null);
-        setSettings({...getFreshState(), watermarkUser: '', watermarkAlign: 'right'});
+        setSettings(getFreshState());
         setHistory({ past: [], future: [] });
         setShowCloud(false);
     }
@@ -211,8 +223,6 @@ export default function App() {
       img.onload = () => {
           let nextSettings = { 
               ...getFreshState(), 
-              watermarkUser: '',
-              watermarkAlign: 'right',
               imageDimensions: { w: img.naturalWidth, h: img.naturalHeight, ratio: img.naturalWidth / img.naturalHeight } 
           };
 
@@ -346,8 +356,8 @@ export default function App() {
             key={`controls-${uiKey}`} activeTab={activeTab} setActiveTab={setActiveTab} settings={settings} setSettings={setSettings}
             onSnapshot={pushToHistory} onReset={() => { pushToHistory(); setSettings({...getFreshState(), imageDimensions: settings.imageDimensions}); setUiKey(k => k + 1); }} 
             image={image} 
-            session={session} 
-            onRequireAuth={() => setView('BOOT_TO_LOGIN')}
+            session={session}                                 /* PASS SESSION DOWN */
+            onRequireAuth={() => setView('BOOT_TO_LOGIN')}    /* PASS AUTH REDIRECT DOWN */
           />
 
           {showCloud && <CloudMenu session={session} settings={settings} imageSrc={image} onLoadProject={handleCloudLoad} onClose={() => setShowCloud(false)} />}
