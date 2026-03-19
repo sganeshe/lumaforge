@@ -221,6 +221,48 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); backgroun
 .btn-grid-2 button:hover, .aspect-grid button:hover { border-color: #555; color: #fff; }
 .aspect-grid button.active { background: #222; color: var(--accent); border-color: var(--accent); }
 
+/* 3-Column Grid Container */
+.btn-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+/* Button Base Styling */
+.btn-grid-3 button {
+  background: #0f0f0f;
+  color: #888;
+  border: 1px solid #333;
+  padding: 8px 0;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* Hover State */
+.btn-grid-3 button:hover {
+  background: #1a1a1a;
+  color: #ddd;
+  border-color: #555;
+}
+
+/* Active State (When selected) */
+.btn-grid-3 button.active {
+  background: rgba(255, 184, 0, 0.1);
+  color: var(--accent, #ffb800);
+  border-color: var(--accent, #ffb800);
+  box-shadow: 0 0 10px rgba(255, 184, 0, 0.1);
+}
+
 .io-grid { display: flex; flex-direction: column; gap: 8px; }
 .btn-io { padding: 14px; background: rgba(255,255,255,0.02); border: 1px dashed #444; color: #888; font-family: var(--font-mono); font-size: 10px; cursor: pointer; transition: 0.2s; border-radius: 4px; }
 .btn-io:hover { border-color: var(--accent); color: var(--accent); background: rgba(255,184,0,0.05); }
