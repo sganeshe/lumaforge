@@ -54,26 +54,34 @@ const ImageStage = ({ imageSrc, settings, setSettings, activeTab }) => {
     return (settings.crop.width / Math.max(1, settings.crop.height)) * baseRatio;
   }, [settings.crop, settings.cropApplied, settings.imageDimensions, isRotated]);
 
-  if (!imageSrc) return null;
-
-  const showCropOverlay = activeTab === 'CROP' && settings.aspectRatio !== 'ORIGINAL' && !settings.cropApplied;
-
-  const handleMouseDown = (e, mode) => {
+  // 1. UNIFIED POINTER DOWN HANDLER
+  const handlePointerDown = (e, mode) => {
     if (!showCropOverlay) return;
-    e.stopPropagation(); e.preventDefault();
+    e.stopPropagation(); 
     setDragMode(mode);
+
+    // Extract coordinates whether it's a mouse click or a screen touch
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
     startPos.current = { 
-        x: e.clientX, y: e.clientY, cx: settings.crop.x, cy: settings.crop.y, 
+        x: clientX, y: clientY, cx: settings.crop.x, cy: settings.crop.y, 
         cw: settings.crop.width, ch: settings.crop.height 
     };
   };
 
-  const handleMouseMove = (e) => {
+  // 2. UNIFIED POINTER MOVE HANDLER
+  const handlePointerMove = (e) => {
     if (!dragMode || !containerRef.current) return;
+    
+    // Safely extract coordinates to prevent mobile crashing
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
     const rect = containerRef.current.getBoundingClientRect();
     
-    const dx = ((e.clientX - startPos.current.x) / rect.width) * 100;
-    const dy = ((e.clientY - startPos.current.y) / rect.height) * 100;
+    const dx = ((clientX - startPos.current.x) / rect.width) * 100;
+    const dy = ((clientY - startPos.current.y) / rect.height) * 100;
     let { cx, cy, cw, ch } = startPos.current; 
     let next = { x: cx, y: cy, width: cw, height: ch };
 
@@ -104,13 +112,17 @@ const ImageStage = ({ imageSrc, settings, setSettings, activeTab }) => {
 
   const handleMouseUp = () => setDragMode(null);
 
+  if (!imageSrc) return null;
+
+  const showCropOverlay = activeTab === 'CROP' && settings.aspectRatio !== 'ORIGINAL' && !settings.cropApplied;
+
   const totalScale = 1 + (settings.zoom / 100);
   
   const cropStyle = settings.cropApplied 
         ? { width: `${100 * (100/Math.max(1, settings.crop.width))}%`, height: `${100 * (100/Math.max(1, settings.crop.height))}%`, transform: `translate(${-settings.crop.x}%, ${-settings.crop.y}%)`, transformOrigin: '0 0' } 
         : { width: '100%', height: '100%', transform: 'none', transformOrigin: '50% 50%' };
         
-  // GEOMETRY FIX: Anti-Squish scaling. Forces the image to retain its shape before being rotated into the flipped container.
+  // GEOMETRY FIX: Anti-Squish scaling
   const imgScaleW = isRotated ? (settings.imageDimensions?.ratio || 1) : 1;
   const imgScaleH = isRotated ? (1 / (settings.imageDimensions?.ratio || 1)) : 1;
 
@@ -122,10 +134,13 @@ const ImageStage = ({ imageSrc, settings, setSettings, activeTab }) => {
   };
 
   return (
-    <div style={{ width: '100%', height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
       <div 
-         ref={containerRef} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} 
-         style={{ position: 'relative', aspectRatio: `${stageAspectRatio}`, maxHeight: '100%', maxWidth: '100%', height: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.6)', overflow: 'hidden', background: '#0a0a0a' }}
+         ref={containerRef} 
+         /* BIND BOTH MOUSE AND TOUCH EVENTS TO THE CONTAINER */
+         onMouseMove={handlePointerMove} onTouchMove={handlePointerMove}
+         onMouseUp={handleMouseUp} onTouchEnd={handleMouseUp} onMouseLeave={handleMouseUp} 
+         style={{ position: 'relative', aspectRatio: `${stageAspectRatio}`, maxHeight: '100%', maxWidth: '100%', height: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.6)', overflow: 'hidden', background: '#0a0a0a', touchAction: 'none' }}
       >
         <div style={{ ...cropStyle, position: 'absolute', top: 0, left: 0 }}>
            <img src={imageSrc} style={sharedImgStyle} draggable={false} alt="Original" />
@@ -136,31 +151,34 @@ const ImageStage = ({ imageSrc, settings, setSettings, activeTab }) => {
            />
         </div>
 
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(circle, transparent 50%, rgba(${settings.vignette >= 0 ? '0,0,0' : '255,255,255'},${Math.abs(settings.vignette)/100}) 140%)` }}/>
+        {/* HUD: Compare Button (Moved top right so it doesn't block the image) */}
+        <button 
+           onMouseDown={() => setIsCompare(true)} onMouseUp={() => setIsCompare(false)} onMouseLeave={() => setIsCompare(false)}
+           onTouchStart={() => setIsCompare(true)} onTouchEnd={() => setIsCompare(false)} 
+           style={{ position: 'absolute', top: 15, right: 15, zIndex: 999, background: 'rgba(14,14,14,0.8)', color: 'var(--accent)', border: '1px solid #444', padding: '8px 12px', fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold', borderRadius: 4, backdropFilter: 'blur(5px)' }}
+        >
+            {isCompare ? 'ORIGINAL' : 'COMPARE'}
+        </button>
 
+        {/* CROP OVERLAY (Interactive 8-way drag with correct Pointer functions) */}
         {showCropOverlay && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
             <div 
-               onMouseDown={(e) => handleMouseDown(e, 'MOVE')} 
+               onMouseDown={(e) => handlePointerDown(e, 'MOVE')} 
+               onTouchStart={(e) => handlePointerDown(e, 'MOVE')}
                style={{ position: 'absolute', left: `${settings.crop.x}%`, top: `${settings.crop.y}%`, width: `${settings.crop.width}%`, height: `${settings.crop.height}%`, boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.7)', border: '1px solid var(--accent)', cursor: 'move' }}
             >
-               <div onMouseDown={e=>{e.stopPropagation(); handleMouseDown(e,'NW')}} style={{position:'absolute',width:12,height:12,top:-6,left:-6,cursor:'nw-resize',zIndex:10,background:'var(--accent)'}} />
-               <div onMouseDown={e=>{e.stopPropagation(); handleMouseDown(e,'NE')}} style={{position:'absolute',width:12,height:12,top:-6,right:-6,cursor:'ne-resize',zIndex:10,background:'var(--accent)'}} />
-               <div onMouseDown={e=>{e.stopPropagation(); handleMouseDown(e,'SW')}} style={{position:'absolute',width:12,height:12,bottom:-6,left:-6,cursor:'sw-resize',zIndex:10,background:'var(--accent)'}} />
-               <div onMouseDown={e=>{e.stopPropagation(); handleMouseDown(e,'SE')}} style={{position:'absolute',width:12,height:12,bottom:-6,right:-6,cursor:'se-resize',zIndex:10,background:'var(--accent)'}} />
+               <div onMouseDown={e=>{e.stopPropagation(); handlePointerDown(e,'NW')}} onTouchStart={e=>{e.stopPropagation(); handlePointerDown(e,'NW')}} className="crop-handle nw" />
+               <div onMouseDown={e=>{e.stopPropagation(); handlePointerDown(e,'NE')}} onTouchStart={e=>{e.stopPropagation(); handlePointerDown(e,'NE')}} className="crop-handle ne" />
+               <div onMouseDown={e=>{e.stopPropagation(); handlePointerDown(e,'SW')}} onTouchStart={e=>{e.stopPropagation(); handlePointerDown(e,'SW')}} className="crop-handle sw" />
+               <div onMouseDown={e=>{e.stopPropagation(); handlePointerDown(e,'SE')}} onTouchStart={e=>{e.stopPropagation(); handlePointerDown(e,'SE')}} className="crop-handle se" />
             </div>
           </div>
         )}
 
-        {isProcessing && <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 999, color: 'var(--accent)', fontSize: '9px', fontFamily: 'var(--font-mono)', background: 'rgba(0,0,0,0.5)', padding: '2px 4px' }}>PROCESSING...</div>}
-        {renderError && <div style={{ position: 'absolute', top: 30, left: 10, zIndex: 999, color: '#ff4444', fontSize: '9px', fontFamily: 'var(--font-mono)', background: 'rgba(0,0,0,0.5)', padding: '2px 4px' }}>ENGINE_FAULT: CHECK CONSOLE</div>}
-
-        <button 
-           onMouseDown={() => setIsCompare(true)} onMouseUp={() => setIsCompare(false)} onMouseLeave={() => setIsCompare(false)} 
-           style={{ position: 'absolute', top: 20, right: 20, zIndex: 999, background: 'rgba(14,14,14,0.8)', color: 'var(--accent)', border: '1px solid #444', padding: '8px 16px', fontSize: 11, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold', borderRadius: 4, backdropFilter: 'blur(5px)' }}
-        >
-            {isCompare ? 'ORIGINAL' : 'HOLD TO COMPARE'}
-        </button>
+        {/* Processing Indicator */}
+        {isProcessing && <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 999, color: 'var(--accent)', fontSize: '9px', fontFamily: 'var(--font-mono)', background: 'rgba(0,0,0,0.5)', padding: '4px 6px', borderRadius: 2 }}>PROCESSING...</div>}
+        {renderError && <div style={{ position: 'absolute', top: 30, left: 10, zIndex: 999, color: '#ff4444', fontSize: '9px', fontFamily: 'var(--font-mono)', background: 'rgba(0,0,0,0.5)', padding: '4px 6px', borderRadius: 2 }}>ENGINE_FAULT: CHECK CONSOLE</div>}
       </div>
     </div>
   );

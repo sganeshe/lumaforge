@@ -337,8 +337,9 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
                 <button onClick={()=>{onSnapshot(); update('flipX', !settings.flipX);}}>FLIP HORIZONTAL</button>
                 <button onClick={()=>{onSnapshot(); update('flipY', !settings.flipY);}}>FLIP VERTICAL</button>
              </div>
-             <div className="divider"/><label className="control-header">ASPECT RATIO</label>
-             <div className="aspect-grid">
+             <div className="sidebar-divider" />
+             <div className="panel-header">ASPECT RATIO</div>
+             <div className="btn-grid-2">
                 {['ORIGINAL','FREE','1:1','16:9','4:5','2:3'].map(baseR => {
                     const flippedR = baseR.includes(':') ? baseR.split(':').reverse().join(':') : null;
                     const isActive = settings.aspectRatio === baseR || settings.aspectRatio === flippedR;
@@ -352,6 +353,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
                     )
                 })}
              </div>
+             <div className="sidebar-divider" />
              {settings.aspectRatio !== 'ORIGINAL' && (
                 <button className="primary-btn" style={{marginTop:20}} onClick={() => { onSnapshot(); setSettings(p => ({...p, cropApplied: !p.cropApplied})); }}>
                     {settings.cropApplied ? "UNLOCK CROP" : "APPLY CROP"}

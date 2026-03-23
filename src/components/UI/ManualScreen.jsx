@@ -18,7 +18,7 @@ export const ManualScreen = ({ onBack }) => {
         <div className="terminal-page amber-theme">
             <div className="terminal-header">
                 <button onClick={onBack} className="terminal-back-btn">← TERMINATE MANUAL</button>
-                <div className="terminal-title">LUMAFORGE_OPTICS_MANUAL_v1.1.0</div>
+                <div className="terminal-title">LUMAFORGE_OPTICS_MANUAL_v1.2.0</div>
             </div>
             
             <div className="terminal-content" style={{ paddingBottom: '100px' }}>

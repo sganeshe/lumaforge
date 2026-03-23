@@ -72,16 +72,16 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
         </div>
         <input id="home-upload" type="file" hidden onChange={onUpload} accept="image/*,.cube" />
 
-        <div style={{ display: 'flex', gap: '20px', marginTop: '30px', animation: 'fade-up 1s ease-out 0.6s backwards' }}>
-            <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_UPLINK')}>[ THE UPLINK FEED ]</button>
-            <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_DIAGNOSTICS')}>[ SYSTEM DIAGNOSTICS ]</button>
-            <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_MANUAL')}>[ OPTICS MANUAL ]</button>
+        <div className="home-nav-links" style={{ display: 'flex', gap: '20px', marginTop: '30px', animation: 'fade-up 1s ease-out 0.6s backwards' }}>
+          <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_UPLINK')}>[ THE UPLINK FEED ]</button>
+          <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_DIAGNOSTICS')}>[ SYSTEM DIAGNOSTICS ]</button>
+          <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_MANUAL')}>[ OPTICS MANUAL ]</button>
         </div>
 
       </div>
 
       <div className="home-footer">
-        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.0.0</span></div>
+        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.2.0</span></div>
         <div className="footer-row links">
            <span style={{color: '#fff'}}>CREATOR: SAUMYA GANESHE</span>
            <a href="https://github.com/sganeshe" target="_blank" rel="noreferrer">[ GITHUB ]</a>
@@ -339,16 +339,22 @@ export default function App() {
             <div style={{position:'absolute', inset:0, opacity:0.3, pointerEvents:'none', backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '80px 80px'}}/>
             <ImageStage imageSrc={image} settings={deferredSettings} setSettings={setSettings} activeTab={activeTab} />
             <div className="canvas-hud">
-              <button className="hud-btn" onClick={undo} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-              </button>
-              <button className="hud-btn" onClick={redo} disabled={history.future.length === 0} title="Redo (Ctrl+Y)">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
-              </button>
-              <div className="hud-divider" />
-              <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.max(0, p.zoom-10)}))}>-</button>
-              <span style={{color: '#888', fontSize: 11, width: 40, textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold'}}>{100 + settings.zoom}%</span>
-              <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.min(200, p.zoom+10)}))}>+</button>
+              {/* LEFT SIDE: History Controls */}
+              <div className="hud-group">
+                <button className="hud-btn" onClick={undo} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+                </button>
+                <button className="hud-btn" onClick={redo} disabled={history.future.length === 0} title="Redo (Ctrl+Y)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
+                </button>
+              </div>
+
+              {/* RIGHT SIDE: Viewport Controls */}
+              <div className="hud-group">
+                <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.max(0, p.zoom-10)}))}>-</button>
+                <span style={{color: '#888', fontSize: 11, width: 40, textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold'}}>{100 + settings.zoom}%</span>
+                <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.min(200, p.zoom+10)}))}>+</button>
+              </div>
             </div>
           </div>
           
