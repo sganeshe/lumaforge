@@ -343,6 +343,68 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); backgroun
 .google-auth-btn:hover { border-color: #fff; background: rgba(255,255,255,0.05); }
 
 /* =========================================================================
+   CLOUD PRESET LIST STYLING
+   ========================================================================= */
+.preset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.preset-item {
+    padding: 12px;
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.2s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.preset-item:hover {
+    background: #1a1a1a;
+    border-color: var(--accent, #ffb800);
+}
+
+.preset-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.preset-name {
+    color: #fff;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.preset-date {
+    color: #666;
+    font-family: var(--font-mono, monospace);
+    font-size: 9px;
+}
+
+.preset-delete {
+    color: #ff4444;
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 5px;
+    font-weight: bold;
+    transition: 0.2s;
+}
+
+.preset-delete:hover {
+    color: #ff0000;
+    transform: scale(1.2);
+}
+
+/* =========================================================================
    TERMINAL SCREENS (Manual & Diagnostics)
    ========================================================================= */
 .terminal-page { width: 100vw; height: 100vh; background: #050505; padding: 40px; font-family: var(--font-mono); display: flex; flex-direction: column; overflow-y: auto; }
