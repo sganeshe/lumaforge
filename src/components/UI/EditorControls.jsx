@@ -1,7 +1,227 @@
 import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
 import CurvesEditor from './CurvesEditor';
+import MaskingEditor from './MaskingEditor'; 
 import { HexColorPicker } from "react-colorful";
 import { analyzeAndEnhance } from '../Engine/AutoEnhance';
+import { supabase } from '../../lib/supabaseClient';
+// --- NEW IMPORT: Bring in the real rendering engine ---
+import { runCorePipeline } from '../Engine/CorePipeline';
+
+// =========================================================================
+// UPLINK BROWSER COMPONENT (WITH PERFECT HOVER PREVIEW)
+// =========================================================================
+const UplinkBrowser = memo(({ setSettings, onSnapshot, image }) => {
+    const [feed, setFeed] = useState([]);
+    const [loading, setLoading] = useState(true);
+    
+    // Hover Preview State
+    const [hoveredPreset, setHoveredPreset] = useState(null);
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+    const [perfectPreviewUrl, setPerfectPreviewUrl] = useState(null);
+
+    useEffect(() => {
+        const loadFeed = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('uplink_posts')
+                    .select('id, preset_name, settings, created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+                
+                if (!error && data) {
+                    setFeed(data);
+                }
+            } catch (err) {
+                console.error("[LUMAFORGE_NETWORK_FAULT] Failed to fetch Uplink Feed", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadFeed();
+    }, []);
+
+    // --- NEW: ASYNC PERFECT PREVIEW GENERATOR ---
+    useEffect(() => {
+        let isMounted = true;
+
+        if (!hoveredPreset || !image) {
+            setPerfectPreviewUrl(null);
+            return;
+        }
+
+        const generatePerfectPreview = async () => {
+            try {
+                const parsedSettings = typeof hoveredPreset.settings === 'string' 
+                    ? JSON.parse(hoveredPreset.settings) 
+                    : hoveredPreset.settings;
+
+                // Run the actual engine, but cap the size at 300px so it processes in ~15ms
+                const renderedCanvas = await runCorePipeline(image, parsedSettings, 300);
+                
+                if (isMounted) {
+                    setPerfectPreviewUrl(renderedCanvas.toDataURL('image/jpeg', 0.8));
+                }
+            } catch (err) {
+                console.warn("[LUMAFORGE_PREVIEW_FAULT] Failed to generate exact preview", err);
+            }
+        };
+
+        generatePerfectPreview();
+
+        return () => { isMounted = false; };
+    }, [hoveredPreset, image]);
+
+    const handleApplyPreset = (presetSettings) => {
+        onSnapshot(); 
+        setSettings(prev => {
+            const incomingSettings = typeof presetSettings === 'string' ? JSON.parse(presetSettings) : presetSettings;
+            return {
+                ...prev,
+                ...incomingSettings,
+                imageDimensions: prev.imageDimensions,
+                crop: prev.crop,
+                cropApplied: prev.cropApplied,
+                rotate: prev.rotate,
+                flipX: prev.flipX,
+                flipY: prev.flipY,
+                aspectRatio: prev.aspectRatio,
+                semanticMask: prev.semanticMask,
+                maskWidth: prev.maskWidth,
+                maskHeight: prev.maskHeight,
+                invertMask: prev.invertMask,
+                showMaskOverlay: prev.showMaskOverlay
+            };
+        });
+    };
+
+    // We keep this as an instant visual fallback for the 15ms it takes the engine to boot
+    const getApproximateCss = (s) => {
+        if (!s) return 'none';
+        const parsed = typeof s === 'string' ? JSON.parse(s) : s;
+        const blurPx = parsed.sharpen < 0 ? Math.abs(parsed.sharpen) * 0.05 : 0;
+        return `
+            brightness(${100 + ((parsed.exposure||0) * 20)}%) 
+            contrast(${100 + (parsed.contrast||0) + ((parsed.dehaze||0)/4)}%) 
+            saturate(${100 + (parsed.saturation||0) + (parsed.vibrance||0) + ((parsed.dehaze||0)/4)}%) 
+            sepia(${parsed.sepia||0}%) invert(${parsed.invert||0}%) hue-rotate(${parsed.hue||0}deg)
+            blur(${blurPx}px)
+        `;
+    };
+
+    const handleMouseMove = (e, item) => {
+        setMousePos({ x: e.clientX, y: e.clientY });
+        if (hoveredPreset?.id !== item.id) {
+            setHoveredPreset(item);
+        }
+    };
+
+    return (
+        <div className="control-section" style={{ position: 'relative' }}>
+            <div className="panel-header">THE UPLINK FEED</div>
+            <p style={{fontSize: 10, color: '#888', marginBottom: 15, fontFamily: 'monospace'}}>
+                GLOBAL COMMUNITY PRESETS
+            </p>
+            
+            {loading ? (
+                <div className="status-label" style={{ color: '#ffb800' }}>[ DOWNLOADING FEED... ]</div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {feed.map(item => (
+                        <div 
+                            key={item.id} 
+                            onMouseMove={(e) => handleMouseMove(e, item)}
+                            onMouseLeave={() => setHoveredPreset(null)}
+                            style={{
+                                background: 'rgba(255,255,255,0.03)', 
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                padding: '12px', 
+                                borderRadius: '6px', 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center',
+                                transition: 'all 0.2s ease',
+                                cursor: 'crosshair'
+                            }}
+                            className="uplink-card-hover"
+                        >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflow: 'hidden' }}>
+                                <span style={{ color: '#fff', fontSize: '12px', fontWeight: 'bold', fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                                    {item.preset_name ? item.preset_name.toUpperCase() : 'UNTITLED PRESET'}
+                                </span>
+                                <span style={{ color: '#666', fontSize: '9px', fontFamily: 'monospace' }}>
+                                    NET_ID: {item.id.substring(0, 8)}
+                                </span>
+                            </div>
+                            <button 
+                                className="btn-tech primary" 
+                                style={{ padding: '6px 14px', fontSize: '10px', marginLeft: '10px' }}
+                                onClick={() => handleApplyPreset(item.settings)}
+                            >
+                                APPLY
+                            </button>
+                        </div>
+                    ))}
+                    {feed.length === 0 && (
+                        <div className="status-label">NO PRESETS DETECTED IN MAINFRAME.</div>
+                    )}
+                </div>
+            )}
+
+            {/* FLOATING SPLIT-SCREEN HOVER PREVIEW */}
+            {hoveredPreset && image && (
+                <div style={{
+                    position: 'fixed',
+                    top: Math.max(20, Math.min(window.innerHeight - 220, mousePos.y - 100)),
+                    left: mousePos.x - 260, 
+                    width: '220px',
+                    height: '220px',
+                    zIndex: 99999,
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.9)',
+                    border: '2px solid rgba(255,184,0,0.5)',
+                    backgroundColor: '#050505',
+                    pointerEvents: 'none',
+                    animation: 'fade-up 0.2s ease-out'
+                }}>
+                    {/* ORIGINAL (LEFT HALF) */}
+                    <div style={{ position: 'absolute', inset: 0, clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)' }}>
+                        <img src={image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Original" />
+                    </div>
+                    
+                    {/* EDITED (RIGHT HALF) */}
+                    <div style={{ position: 'absolute', inset: 0, clipPath: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)' }}>
+                        {perfectPreviewUrl ? (
+                            <img 
+                                src={perfectPreviewUrl} 
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                alt="Perfect Preview" 
+                            />
+                        ) : (
+                            <img 
+                                src={image} 
+                                style={{ 
+                                    width: '100%', height: '100%', objectFit: 'cover', 
+                                    filter: getApproximateCss(hoveredPreset.settings) 
+                                }} 
+                                alt="Approximate Preview" 
+                            />
+                        )}
+                    </div>
+
+                    {/* DIVIDER LINE & BADGES */}
+                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '2px', backgroundColor: 'var(--amber)' }} />
+                    <div style={{ position: 'absolute', bottom: 5, left: 5, fontSize: 9, background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>ORIGINAL</div>
+                    <div style={{ position: 'absolute', bottom: 5, right: 5, fontSize: 9, background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>PREVIEW</div>
+                </div>
+            )}
+        </div>
+    );
+});
+
+// =========================================================================
+// EXISTING UI COMPONENTS
+// =========================================================================
 
 const Histogram = memo(({ imageSrc, exposure, contrast, whites, blacks, shadows, highlights }) => {
     const canvasRef = useRef(null);
@@ -230,12 +450,10 @@ const GradeControl = memo(({ label, tone, settings, setSettings, onSnapshot }) =
     );
 });
 
-// Added session and onRequireAuth props to EditorControls
-const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnapshot, onReset, image, session, onRequireAuth }) => {
+const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnapshot, onReset, image, session, onRequireAuth, baseImageData }) => {
   
   const update = useCallback((key, val) => setSettings(p => ({ ...p, [key]: val })), [setSettings]);
 
-  // SMART ASPECT RATIO TOGGLE (Handles 16:9 -> 9:16 rotation desync fix)
   const applyAspect = useCallback((baseRatioName) => {
       onSnapshot(); 
       setSettings(prev => {
@@ -249,7 +467,6 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
           let newRatioName = baseRatioName;
           const flippedBase = baseRatioName.includes(':') ? baseRatioName.split(':').reverse().join(':') : null;
 
-          // If the ratio is already active, flip it!
           if (prev.aspectRatio === baseRatioName && baseRatioName !== '1:1') {
               newRatioName = flippedBase;
           } else if (prev.aspectRatio === flippedBase) {
@@ -299,9 +516,11 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
 
   return (
     <div className="editor-controls">
-      <div className="tabs">
-        {['CROP', 'EDIT', 'COLOR', 'CURVES', 'FX', 'DATA'].map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={activeTab===tab?'active':''}>{tab}</button>
+      <div className="tabs" style={{ flexWrap: 'wrap' }}>
+        {['CROP', 'EDIT', 'COLOR', 'CURVES', 'MASK', 'FX', 'UPLINK', 'DATA'].map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={activeTab===tab?'active':''} style={{ flex: '1 1 auto', fontSize: '10px' }}>
+                {tab}
+            </button>
         ))}
       </div>
 
@@ -312,7 +531,6 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
            <div className="control-section">
              <div className="panel-header">GEOMETRY</div>
              <div className="btn-grid-2">
-                {/* FIX: Reset crop bounds when rotating to prevent coordinate desync */}
                 <button onClick={()=>{
                     onSnapshot(); 
                     setSettings(p => ({ 
@@ -333,7 +551,6 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
                         crop: { x: 10, y: 10, width: 80, height: 80, aspect: null } 
                     }));
                 }}>ROTATE R</button>
-                {/* RENAMED TO FLIP HORIZONTAL / VERTICAL */}
                 <button onClick={()=>{onSnapshot(); update('flipX', !settings.flipX);}}>FLIP HORIZONTAL</button>
                 <button onClick={()=>{onSnapshot(); update('flipY', !settings.flipY);}}>FLIP VERTICAL</button>
              </div>
@@ -371,17 +588,9 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
                     onClick={handleMagicAuto} 
                     disabled={isAnalyzing}
                     style={{
-                        background: 'rgba(255, 184, 0, 0.15)',
-                        color: 'var(--amber)',
-                        border: '1px solid var(--amber)',
-                        padding: '4px 10px',
-                        borderRadius: '4px',
-                        fontSize: '10px',
-                        fontFamily: 'var(--font-mono)',
-                        cursor: isAnalyzing ? 'wait' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
+                        background: 'rgba(255, 184, 0, 0.15)', color: 'var(--amber)', border: '1px solid var(--amber)',
+                        padding: '4px 10px', borderRadius: '4px', fontSize: '10px', fontFamily: 'var(--font-mono)',
+                        cursor: isAnalyzing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                     }}
                 >
                     {isAnalyzing ? 'ANALYZING...' : '🪄 AUTO FIX'}
@@ -422,7 +631,16 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
           </div>
         )}
 
-        {/* 5. FX */}
+        {/* 5. MASKING PANEL */}
+        {activeTab === 'MASK' && (
+            <MaskingEditor 
+                sourceImageData={baseImageData} 
+                settings={settings} 
+                setSettings={setSettings} 
+            />
+        )}
+
+        {/* 6. FX */}
         {activeTab === 'FX' && (
           <div className="control-section">
             <div className="panel-header">OPTICS</div>
@@ -443,34 +661,32 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
           </div>
         )}
 
-        {/* 6. DATA */}
+        {/* 7. NEW UPLINK PANEL */}
+        {activeTab === 'UPLINK' && (
+            <UplinkBrowser setSettings={setSettings} onSnapshot={onSnapshot} image={image} />
+        )}
+
+        {/* 8. DATA */}
         {activeTab === 'DATA' && (
            <div className="control-section">
               <div className="panel-header">SYSTEM I/O</div>
               <Histogram imageSrc={image} exposure={settings.exposure} contrast={settings.contrast} whites={settings.whites} blacks={settings.blacks} shadows={settings.shadows} highlights={settings.highlights}/>
               
               <div style={{marginTop: 20}}>
-                  
-                  {/* AUTH-LOCKED WATERMARK TOGGLE (UI fix) */}
                   <button 
                       onClick={() => {
                           if (!session) {
-                              onRequireAuth(); // Route to login screen
+                              onRequireAuth(); 
                               return;
                           }
                           update('watermark', !settings.watermark);
                       }} 
                       className={`btn-toggle ${settings.watermark && session ? 'active' : ''}`} 
-                      style={{
-                          marginBottom: 10, 
-                          opacity: session ? 1 : 0.6,
-                          borderColor: !session ? '#444' : ''
-                      }}
+                      style={{ marginBottom: 10, opacity: session ? 1 : 0.6, borderColor: !session ? '#444' : '' }}
                   >
-                      {!session ? '🔒 WATERMARK (LOGIN REQUIRED)' : (settings.watermark ? 'WATERMARK: ACTIVE' : 'WATERMARK: INACTIVE')}
+                      {!session ? 'WATERMARK (LOGIN REQUIRED)' : (settings.watermark ? 'WATERMARK: ACTIVE' : 'WATERMARK: INACTIVE')}
                   </button>
 
-                  {/* ALIGNABLE CREATOR SETTINGS (renders only if active AND logged in) */}
                   {settings.watermark && session && (
                       <div className="control-subgroup" style={{background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 4, border: '1px solid #333'}}>
                           <div className="control-header" style={{marginBottom: 5}}><label>CREATOR IDENT</label></div>

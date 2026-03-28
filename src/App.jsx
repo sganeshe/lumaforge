@@ -20,6 +20,7 @@ import { ManualScreen } from './components/UI/ManualScreen';
 import { DiagnosticsScreen } from './components/UI/DiagnosticsScreen';
 import { LoginScreen } from './components/UI/LoginScreen';
 import { UplinkFeed } from './components/UI/UplinkFeed';
+import MaskingEditor from './components/UI/MaskingEditor';
 
 // Utilities, Hooks & Services
 import { supabase } from './lib/supabaseClient'; 
@@ -103,6 +104,7 @@ export default function App() {
   const [appPrefs, setAppPrefs] = useState({ animations: true });
   const [showCloud, setShowCloud] = useState(false);
   const [image, setImage] = useState(null);
+  const [baseImageData, setBaseImageData] = useState(null); // <-- NEW AI RAW PIXEL DATA
   const [activeTab, setActiveTab] = useState('EDIT');
   
   // Appended new watermark parameters (alignable stacked) to fresh state
@@ -132,6 +134,7 @@ export default function App() {
     if (window.confirm("SYSTEM WARNING: Returning to home will discard all unsaved edits. Proceed?")) {
         setView('BOOT_TO_HOME');
         setImage(null);
+        setBaseImageData(null); // Clear AI memory
         setSettings(getFreshState());
         setHistory({ past: [], future: [] });
         setShowCloud(false);
@@ -139,7 +142,8 @@ export default function App() {
   };
 
   const pushToHistory = useCallback(() => {
-    const currentState = JSON.parse(JSON.stringify(settingsRef.current)); 
+    const currentState = structuredClone(settingsRef.current); 
+    
     setHistory(curr => {
         const lastState = curr.past[curr.past.length - 1];
         if (lastState && JSON.stringify(lastState) === JSON.stringify(currentState)) return curr;
@@ -220,6 +224,7 @@ export default function App() {
       }
 
       const img = new Image();
+      img.crossOrigin = "anonymous"; // CRITICAL FOR CORS / AI EXTRACTION
       img.onload = () => {
           let nextSettings = { 
               ...getFreshState(), 
@@ -233,6 +238,14 @@ export default function App() {
                   imageDimensions: nextSettings.imageDimensions 
               };
           }
+
+          // ---> RAW PIXEL EXTRACTION FOR WEB WORKER (AI MASKING) <---
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = img.naturalWidth;
+          tempCanvas.height = img.naturalHeight;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(img, 0, 0);
+          setBaseImageData(tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height));
 
           setSettings(nextSettings);
           setImage(nextImage);
@@ -287,12 +300,22 @@ export default function App() {
   const handleForkFromUplink = (forkedSettings, file) => {
       const visualUrl = URL.createObjectURL(file);
       const img = new Image();
+      img.crossOrigin = "anonymous"; // CRITICAL FOR CORS / AI EXTRACTION
       img.onload = () => {
           setSettings({ 
               ...getFreshState(), 
               ...forkedSettings, 
               imageDimensions: { w: img.naturalWidth, h: img.naturalHeight, ratio: img.naturalWidth / img.naturalHeight } 
           });
+
+          // ---> RAW PIXEL EXTRACTION FOR WEB WORKER (AI MASKING) <---
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = img.naturalWidth;
+          tempCanvas.height = img.naturalHeight;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(img, 0, 0);
+          setBaseImageData(tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height));
+
           setImage(visualUrl); 
           setHistory({ past: [], future: [] }); 
           setUiKey(prev => prev + 1); 
@@ -364,6 +387,7 @@ export default function App() {
             image={image} 
             session={session}                                 /* PASS SESSION DOWN */
             onRequireAuth={() => setView('BOOT_TO_LOGIN')}    /* PASS AUTH REDIRECT DOWN */
+            baseImageData={baseImageData}                     /* ---> NEW AI RAW PIXEL DATA PASSED DOWN <--- */
           />
 
           {showCloud && <CloudMenu session={session} settings={settings} imageSrc={image} onLoadProject={handleCloudLoad} onClose={() => setShowCloud(false)} />}

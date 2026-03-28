@@ -233,7 +233,7 @@ img {
 /* =========================================================================
    EDITOR INTERNAL UI (TABS, GRIDS, SLIDERS)
    ========================================================================= */
-.tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--border-dim); border-bottom: 1px solid var(--border-dim); }
+.tabs { display: grid; grid-template-columns: repeat(4, 4fr); gap: 1px; background: var(--border-dim); border-bottom: 1px solid var(--border-dim); }
 .tabs button {
   background: var(--bg-panel); border: none; color: var(--text-muted); font-family: var(--font-mono); 
   font-size: 9px; font-weight: 600; padding: 14px 0; cursor: pointer; transition: all 0.2s var(--ease-smooth);
