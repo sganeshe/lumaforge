@@ -66,7 +66,7 @@ export const LeftSidebar = ({
                 <button className="nav-btn shell-btn" onClick={onHome}>← SHELL</button>
                 <div className="logo-container">
                     <img src="/lf_orange.png" alt="LUMAFORGE" />
-                    <span className="version-tag">v1.2.0</span>
+                    <span className="version-tag">v1.3.0</span>
                 </div>
                 
                 {/* HAMBURGER TOGGLE */}
