@@ -201,7 +201,8 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg', session =
                           app: "Lumaforge",
                           creator_id: session.user.id,
                           verified: true,
-                          timestamp: new Date().toISOString()
+                          timestamp: new Date().toISOString(),
+                          settings: settings
                       });
 
                       exif[piexif.ExifIFD.UserComment] = "ASCII\0\0\0" + provenanceReceipt;
