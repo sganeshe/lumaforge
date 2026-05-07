@@ -456,7 +456,7 @@ const LumaforgeCore = () => {
             <div className="app-shell">
               <LeftSidebar 
                 onHome={handleGoHome} 
-                onExportImage={async (format) => await exportImage(image, settings, format)} 
+                onExportImage={async (format) => await exportImage(image, settings, format, session)} 
                 onExportCube={saveCube} 
                 onLoadPreset={handleCloudLoad}
                 onImportFile={() => fileInputRef.current.click()} 
