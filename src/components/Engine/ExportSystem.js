@@ -195,7 +195,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg', session =
                       
                       zeroth[piexif.ImageIFD.Artist] = creatorName;
                       zeroth[piexif.ImageIFD.Software] = softwareTag;
-                      zeroth[piexif.ImageIFD.Copyright] = `© ${new Date().getFullYear()} ${creatorName}`;
+                      zeroth[piexif.ImageIFD.Copyright] = `(c) ${new Date().getFullYear()} ${creatorName}`;
 
                       const provenanceReceipt = JSON.stringify({
                           app: "Lumaforge",
