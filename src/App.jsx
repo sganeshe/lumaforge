@@ -1,10 +1,11 @@
 /**
  * @file App.jsx
  * @description The central orchestrator and state-machine for LUMAFORGE.
- * Handles routing, session auth, undo/redo stacks, and local file imports.
+ * Now powered by React Router for true SPA page navigation.
  */
 
 import React, { useState, useEffect, useCallback, useRef, useDeferredValue } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 
 // Engine & Core Systems
 import ImageStage from './components/Engine/ImageStage';
@@ -20,7 +21,6 @@ import { ManualScreen } from './components/UI/ManualScreen';
 import { DiagnosticsScreen } from './components/UI/DiagnosticsScreen';
 import { LoginScreen } from './components/UI/LoginScreen';
 import { UplinkFeed } from './components/UI/UplinkFeed';
-import MaskingEditor from './components/UI/MaskingEditor';
 
 // Utilities, Hooks & Services
 import { supabase } from './lib/supabaseClient'; 
@@ -30,11 +30,21 @@ import './styles/index.css';
 import { Analytics } from "@vercel/analytics/next";
 
 /* =========================================================================
-   PRESENTATIONAL COMPONENTS (ROUTING VIEWS)
+   ROUTING WRAPPERS & PRESENTATIONAL VIEWS
    ========================================================================= */
 
-const BootScreen = ({ onComplete }) => {
-  useEffect(() => { setTimeout(onComplete, 2200); }, [onComplete]);
+// The Boot Screen now intercepts routing requests and forwards them
+const BootScreen = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  // If a target is passed in the router state, go there. Otherwise, go home.
+  const targetPath = location.state?.target || '/';
+
+  useEffect(() => { 
+      const timer = setTimeout(() => navigate(targetPath, { replace: true }), 2200); 
+      return () => clearTimeout(timer);
+  }, [navigate, targetPath]);
+
   return (
     <div className="home-layer" style={{background: '#050505'}}>
       <div className="hero-block" style={{animation: 'none', opacity: 0.9, marginBottom: '25px'}}>
@@ -45,8 +55,14 @@ const BootScreen = ({ onComplete }) => {
   );
 };
 
-const HomeScreen = ({ onUpload, onNavigate }) => {
+const HomeScreen = ({ onUpload }) => {
   const timeStr = useSystemClock();
+  const navigate = useNavigate();
+
+  const handleNavigate = (path) => {
+      navigate('/boot', { state: { target: path } });
+  };
+
   return (
     <div className="home-layer">
       <div className="home-grid" />
@@ -75,15 +91,15 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
         <input id="home-upload" type="file" hidden onChange={onUpload} accept="image/*,.cube" />
 
         <div className="home-nav-links" style={{ display: 'flex', gap: '20px', marginTop: '30px', animation: 'fade-up 1s ease-out 0.6s backwards' }}>
-          <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_UPLINK')}>[ THE UPLINK FEED ]</button>
-          <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_DIAGNOSTICS')}>[ SYSTEM DIAGNOSTICS ]</button>
-          <button className="text-nav-btn" onClick={() => onNavigate('BOOT_TO_MANUAL')}>[ OPTICS MANUAL ]</button>
+          <button className="text-nav-btn" onClick={() => handleNavigate('/uplink')}>[ THE UPLINK FEED ]</button>
+          <button className="text-nav-btn" onClick={() => handleNavigate('/diagnostics')}>[ SYSTEM DIAGNOSTICS ]</button>
+          <button className="text-nav-btn" onClick={() => handleNavigate('/manual')}>[ OPTICS MANUAL ]</button>
         </div>
 
       </div>
 
       <div className="home-footer">
-        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.3.0</span></div>
+        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.4.0</span></div>
         <div className="footer-row links">
            <span style={{color: '#fff'}}>CREATOR: SAUMYA GANESHE</span>
            <a href="https://github.com/sganeshe" target="_blank" rel="noreferrer">[ GITHUB ]</a>
@@ -96,24 +112,111 @@ const HomeScreen = ({ onUpload, onNavigate }) => {
 };
 
 /* =========================================================================
-   MAIN APPLICATION ORCHESTRATOR
+   NEW: SHARED PRESET LANDING PAGE
+   ========================================================================= */
+const SharedPresetPage = ({ onFork, onCancel }) => {
+  const { id } = useParams();
+  const [preset, setPreset] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+      const fetchPreset = async () => {
+          try {
+              const { data, error } = await supabase
+                  .from('uplink_posts')
+                  .select('preset_name, settings')
+                  .eq('id', id)
+                  .single();
+
+              if (error) throw error;
+              if (data) setPreset(data);
+          } catch (err) {
+              setError("PRESET NOT FOUND OR CORRUPTED.");
+          } finally {
+              setLoading(false);
+          }
+      };
+      fetchPreset();
+  }, [id]);
+
+  const handleSharedUpload = (e) => {
+      const file = e.target.files[0];
+      if (!file || !preset) return;
+      
+      const parsedSettings = typeof preset.settings === 'string' 
+          ? JSON.parse(preset.settings) 
+          : preset.settings;
+
+      onFork(parsedSettings, file);
+  };
+
+  if (loading) return <BootScreen />;
+
+  return (
+      <div className="home-layer">
+          <div className="home-grid" />
+          <div className="hero-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
+              
+              {error ? (
+                  <>
+                      <div className="status-label" style={{ color: '#ff3333' }}>[ {error} ]</div>
+                      <button className="text-nav-btn" onClick={onCancel}>[ RETURN TO MAINFRAME ]</button>
+                  </>
+              ) : (
+                  <>
+                      <div className="system-status" style={{ background: 'rgba(0, 255, 150, 0.05)', border: '1px solid rgba(0, 255, 150, 0.2)' }}>
+                          <div className="status-dot" style={{ background: '#00ff96', boxShadow: '0 0 8px #00ff96' }}/>
+                          INCOMING TRANSMISSION
+                      </div>
+
+                      <h2 style={{ color: '#fff', fontSize: '24px', fontFamily: 'var(--font-ui)', letterSpacing: '2px', textAlign: 'center', margin: 0 }}>
+                          APPLY <span style={{ color: 'var(--amber)' }}>{preset.preset_name?.toUpperCase() || 'UNTITLED'}</span>
+                      </h2>
+                      
+                      <p style={{ color: '#888', fontSize: '12px', fontFamily: 'monospace', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6' }}>
+                          A creator has shared an optics preset with you. Upload an image to preview and apply this grade.
+                      </p>
+
+                      <div className="start-btn-group" style={{ marginTop: '20px' }}>
+                          <button className="btn-tech primary" onClick={() => document.getElementById('shared-upload').click()} style={{ padding: '16px 40px' }}>
+                              UPLOAD IMAGE
+                          </button>
+                      </div>
+                      <input id="shared-upload" type="file" hidden onChange={handleSharedUpload} accept="image/*" />
+
+                      <button className="text-nav-btn" onClick={onCancel} style={{ marginTop: '20px' }}>
+                          [ DECLINE & GO TO HOME ]
+                      </button>
+                  </>
+              )}
+          </div>
+      </div>
+  );
+};
+
+
+/* =========================================================================
+   INTERNAL APP STATE CONTROLLER
    ========================================================================= */
 
-export default function App() {
-  const [view, setView] = useState('BOOT'); 
+const LumaforgeCore = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Core State
   const [session, setSession] = useState(null);
   const [appPrefs, setAppPrefs] = useState({ animations: true });
   const [showCloud, setShowCloud] = useState(false);
   const [image, setImage] = useState(null);
-  const [baseImageData, setBaseImageData] = useState(null); // <-- NEW AI RAW PIXEL DATA
+  const [baseImageData, setBaseImageData] = useState(null); 
   const [activeTab, setActiveTab] = useState('EDIT');
   
-  // Appended new watermark parameters (alignable stacked) to fresh state
   const [settings, setSettings] = useState({
       ...getFreshState(),
       watermark: false,
-      watermarkUser: 'sganeshe', // The creator ident
-      watermarkAlign: 'right',   // Default bottom-right stack alignment
+      watermarkUser: 'sganeshe', 
+      watermarkAlign: 'right',  
   });
   
   const deferredSettings = useDeferredValue(settings);
@@ -124,36 +227,14 @@ export default function App() {
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
-  // Auth Listener (Auth0 or Supabase as seen in original code)
+  // Auth Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleGoHome = () => {
-    if (window.confirm("SYSTEM WARNING: Returning to home will discard all unsaved edits. Proceed?")) {
-        setView('BOOT_TO_HOME');
-        setImage(null);
-        setBaseImageData(null); // Clear AI memory
-        setSettings(getFreshState());
-        setHistory({ past: [], future: [] });
-        setShowCloud(false);
-    }
-  };
-
-  const pushToHistory = useCallback(() => {
-    const currentState = structuredClone(settingsRef.current); 
-    
-    setHistory(curr => {
-        const lastState = curr.past[curr.past.length - 1];
-        if (lastState && JSON.stringify(lastState) === JSON.stringify(currentState)) return curr;
-        const newPast = [...curr.past, currentState];
-        if (newPast.length > 30) newPast.shift();
-        return { past: newPast, future: [] };
-    });
-  }, []);
-
+  // Keyboard Shortcuts (Only active if in Editor)
   const undo = useCallback(() => {
     setHistory(curr => {
         if (curr.past.length === 0) return curr;
@@ -178,12 +259,25 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (location.pathname !== '/editor') return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, location.pathname]);
+
+  // File Processing
+  const pushToHistory = useCallback(() => {
+    const currentState = structuredClone(settingsRef.current); 
+    setHistory(curr => {
+        const lastState = curr.past[curr.past.length - 1];
+        if (lastState && JSON.stringify(lastState) === JSON.stringify(currentState)) return curr;
+        const newPast = [...curr.past, currentState];
+        if (newPast.length > 30) newPast.shift();
+        return { past: newPast, future: [] };
+    });
+  }, []);
 
   const processFile = useCallback(async (file) => {
       if (file.name.toLowerCase().endsWith('.cube')) {
@@ -225,7 +319,7 @@ export default function App() {
       }
 
       const img = new Image();
-      img.crossOrigin = "anonymous"; // CRITICAL FOR CORS / AI EXTRACTION
+      img.crossOrigin = "anonymous"; 
       img.onload = () => {
           let nextSettings = { 
               ...getFreshState(), 
@@ -240,7 +334,6 @@ export default function App() {
               };
           }
 
-          // ---> RAW PIXEL EXTRACTION FOR WEB WORKER (AI MASKING) <---
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = img.naturalWidth;
           tempCanvas.height = img.naturalHeight;
@@ -252,11 +345,12 @@ export default function App() {
           setImage(nextImage);
           setHistory({ past: [], future: [] });
           setUiKey(prev => prev + 1); 
-          setView('BOOT_TO_EDITOR');
+          
+          navigate('/boot', { state: { target: '/editor' } });
       };
       
       img.src = nextImage;
-  }, [pushToHistory]);
+  }, [pushToHistory, navigate]);
 
   const handleUpload = (e) => {
       const file = e.target.files[0];
@@ -264,7 +358,16 @@ export default function App() {
       processFile(file); 
   };
 
-  const handleAbortLogin = () => setView('BOOT_TO_HOME');
+  const handleGoHome = () => {
+    if (window.confirm("SYSTEM WARNING: Returning to home will discard all unsaved edits. Proceed?")) {
+        setImage(null);
+        setBaseImageData(null); 
+        setSettings(getFreshState());
+        setHistory({ past: [], future: [] });
+        setShowCloud(false);
+        navigate('/boot', { state: { target: '/' } });
+    }
+  };
 
   const handleCloudLoad = (cloudSettings) => {
       pushToHistory();
@@ -296,12 +399,10 @@ export default function App() {
       else alert("PRESET SAVED TO CLOUD");
   };
 
-  const handleDiagnosticsSignIn = () => setView('BOOT_TO_LOGIN');
-
   const handleForkFromUplink = (forkedSettings, file) => {
       const visualUrl = URL.createObjectURL(file);
       const img = new Image();
-      img.crossOrigin = "anonymous"; // CRITICAL FOR CORS / AI EXTRACTION
+      img.crossOrigin = "anonymous"; 
       img.onload = () => {
           setSettings({ 
               ...getFreshState(), 
@@ -309,7 +410,6 @@ export default function App() {
               imageDimensions: { w: img.naturalWidth, h: img.naturalHeight, ratio: img.naturalWidth / img.naturalHeight } 
           });
 
-          // ---> RAW PIXEL EXTRACTION FOR WEB WORKER (AI MASKING) <---
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = img.naturalWidth;
           tempCanvas.height = img.naturalHeight;
@@ -320,7 +420,8 @@ export default function App() {
           setImage(visualUrl); 
           setHistory({ past: [], future: [] }); 
           setUiKey(prev => prev + 1); 
-          setView('BOOT_TO_EDITOR');
+          
+          navigate('/boot', { state: { target: '/editor' } });
       };
       img.src = visualUrl;
   };
@@ -328,72 +429,94 @@ export default function App() {
   return (
     <>
       {!appPrefs.animations && <style>{`* { animation: none !important; transition: none !important; }`}</style>}
-      {view === 'BOOT' && <BootScreen onComplete={() => setView('HOME')} />}
-      {view === 'BOOT_TO_HOME' && <BootScreen onComplete={() => setView('HOME')} />}
-      {view === 'BOOT_TO_EDITOR' && <BootScreen onComplete={() => setView('EDITOR')} />}
-      {view === 'BOOT_TO_MANUAL' && <BootScreen onComplete={() => setView('MANUAL')} />}
-      {view === 'BOOT_TO_DIAGNOSTICS' && <BootScreen onComplete={() => setView('DIAGNOSTICS')} />}
-      {view === 'BOOT_TO_LOGIN' && <BootScreen onComplete={() => setView('LOGIN')} />}
-      {view === 'BOOT_TO_UPLINK' && <BootScreen onComplete={() => setView('UPLINK')} />} 
+      
+      <Routes>
+        {/* BOOT ROUTE - Intercepts and redirects */}
+        <Route path="/boot" element={<BootScreen />} />
 
-      {view === 'HOME' && <HomeScreen onUpload={handleUpload} onNavigate={setView} />}
-      {view === 'MANUAL' && <ManualScreen onBack={() => setView('BOOT_TO_HOME')} />}
-      {view === 'LOGIN' && <LoginScreen onBack={handleAbortLogin} />}
-      {view === 'UPLINK' && <UplinkFeed session={session} onBack={() => setView('BOOT_TO_HOME')} onFork={handleForkFromUplink} />}
-      {view === 'DIAGNOSTICS' && <DiagnosticsScreen onBack={() => setView('BOOT_TO_HOME')} session={session} appPrefs={appPrefs} setAppPrefs={setAppPrefs} onSignIn={handleDiagnosticsSignIn}/>}
+        {/* HOME ROUTE */}
+        <Route path="/" element={<HomeScreen onUpload={handleUpload} />} />
 
-      {view === 'EDITOR' && (
-        <div className="app-shell">
-          <LeftSidebar 
-            onHome={handleGoHome} 
-            onExportImage={async (format) => await exportImage(image, settings, format)} 
-            onExportCube={saveCube} 
-            onLoadPreset={handleCloudLoad}
-            onImportFile={() => fileInputRef.current.click()} 
-            onSaveToCloud={handleSaveToCloud} 
-            session={session} 
-            setShowAuth={() => setView('BOOT_TO_LOGIN')}
-            currentSettings={settings} 
-            imageSrc={image}
-          />
+        {/* ---> NEW: THE SHARED LINK ROUTE <--- */}
+        <Route path="/share/:id" element={
+            <SharedPresetPage 
+                onFork={handleForkFromUplink} 
+                onCancel={() => navigate('/')} 
+            />
+        } />
 
-          <input ref={fileInputRef} type="file" hidden accept="image/*,.cube" onChange={handleUpload} onClick={(e) => e.target.value = null} />
+        {/* STATIC PAGES */}
+        <Route path="/manual" element={<ManualScreen onBack={() => navigate('/')} />} />
+        <Route path="/diagnostics" element={<DiagnosticsScreen onBack={() => navigate('/')} session={session} appPrefs={appPrefs} setAppPrefs={setAppPrefs} onSignIn={() => navigate('/boot', { state: { target: '/login' } })}/>} />
+        <Route path="/login" element={<LoginScreen onBack={() => navigate('/')} />} />
+        <Route path="/uplink" element={<UplinkFeed session={session} onBack={() => navigate('/')} onFork={handleForkFromUplink} />} />
 
-          <div className="canvas-area" key={`stage-${uiKey}`}>
-            <div style={{position:'absolute', inset:0, opacity:0.3, pointerEvents:'none', backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '80px 80px'}}/>
-            <ImageStage imageSrc={image} settings={deferredSettings} setSettings={setSettings} activeTab={activeTab} />
-            <div className="canvas-hud">
-              {/* LEFT SIDE: History Controls */}
-              <div className="hud-group">
-                <button className="hud-btn" onClick={undo} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-                </button>
-                <button className="hud-btn" onClick={redo} disabled={history.future.length === 0} title="Redo (Ctrl+Y)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
-                </button>
+        {/* MAIN EDITOR ROUTE */}
+        <Route path="/editor" element={
+          !image ? <Navigate to="/" replace /> : (
+            <div className="app-shell">
+              <LeftSidebar 
+                onHome={handleGoHome} 
+                onExportImage={async (format) => await exportImage(image, settings, format)} 
+                onExportCube={saveCube} 
+                onLoadPreset={handleCloudLoad}
+                onImportFile={() => fileInputRef.current.click()} 
+                onSaveToCloud={handleSaveToCloud} 
+                session={session} 
+                setShowAuth={() => navigate('/boot', { state: { target: '/login' } })}
+                currentSettings={settings} 
+                imageSrc={image}
+              />
+
+              <input ref={fileInputRef} type="file" hidden accept="image/*,.cube" onChange={handleUpload} onClick={(e) => e.target.value = null} />
+
+              <div className="canvas-area" key={`stage-${uiKey}`}>
+                <div style={{position:'absolute', inset:0, opacity:0.3, pointerEvents:'none', backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '80px 80px'}}/>
+                <ImageStage imageSrc={image} settings={deferredSettings} setSettings={setSettings} activeTab={activeTab} />
+                <div className="canvas-hud">
+                  <div className="hud-group">
+                    <button className="hud-btn" onClick={undo} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+                    </button>
+                    <button className="hud-btn" onClick={redo} disabled={history.future.length === 0} title="Redo (Ctrl+Y)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
+                    </button>
+                  </div>
+                  <div className="hud-group">
+                    <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.max(0, p.zoom-10)}))}>-</button>
+                    <span style={{color: '#888', fontSize: 11, width: 40, textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold'}}>{100 + settings.zoom}%</span>
+                    <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.min(200, p.zoom+10)}))}>+</button>
+                  </div>
+                </div>
               </div>
+              
+              <EditorControls 
+                key={`controls-${uiKey}`} activeTab={activeTab} setActiveTab={setActiveTab} settings={settings} setSettings={setSettings}
+                onSnapshot={pushToHistory} onReset={() => { pushToHistory(); setSettings({...getFreshState(), imageDimensions: settings.imageDimensions}); setUiKey(k => k + 1); }} 
+                image={image} session={session} 
+                onRequireAuth={() => navigate('/boot', { state: { target: '/login' } })}
+                baseImageData={baseImageData} 
+              />
 
-              {/* RIGHT SIDE: Viewport Controls */}
-              <div className="hud-group">
-                <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.max(0, p.zoom-10)}))}>-</button>
-                <span style={{color: '#888', fontSize: 11, width: 40, textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold'}}>{100 + settings.zoom}%</span>
-                <button className="hud-btn" onClick={()=>setSettings(p=>({...p, zoom: Math.min(200, p.zoom+10)}))}>+</button>
-              </div>
+              {showCloud && <CloudMenu session={session} settings={settings} imageSrc={image} onLoadProject={handleCloudLoad} onClose={() => setShowCloud(false)} />}
             </div>
-          </div>
-          
-          <EditorControls 
-            key={`controls-${uiKey}`} activeTab={activeTab} setActiveTab={setActiveTab} settings={settings} setSettings={setSettings}
-            onSnapshot={pushToHistory} onReset={() => { pushToHistory(); setSettings({...getFreshState(), imageDimensions: settings.imageDimensions}); setUiKey(k => k + 1); }} 
-            image={image} 
-            session={session}                                 /* PASS SESSION DOWN */
-            onRequireAuth={() => setView('BOOT_TO_LOGIN')}    /* PASS AUTH REDIRECT DOWN */
-            baseImageData={baseImageData}                     /* ---> NEW AI RAW PIXEL DATA PASSED DOWN <--- */
-          />
-
-          {showCloud && <CloudMenu session={session} settings={settings} imageSrc={image} onLoadProject={handleCloudLoad} onClose={() => setShowCloud(false)} />}
-        </div>
-      )}
+          )
+        } />
+        
+        {/* Catch-All 404 Route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </>
+  );
+};
+
+/* =========================================================================
+   ROUTER WRAPPER
+   ========================================================================= */
+export default function App() {
+  return (
+    <Router>
+      <LumaforgeCore />
+    </Router>
   );
 }

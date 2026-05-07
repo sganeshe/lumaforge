@@ -4,7 +4,6 @@ import MaskingEditor from './MaskingEditor';
 import { HexColorPicker } from "react-colorful";
 import { analyzeAndEnhance } from '../Engine/AutoEnhance';
 import { supabase } from '../../lib/supabaseClient';
-// --- NEW IMPORT: Bring in the real rendering engine ---
 import { runCorePipeline } from '../Engine/CorePipeline';
 
 // =========================================================================
@@ -94,6 +93,14 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image }) => {
         });
     };
 
+    // --- HANDLE COPY SHARE LINK ---
+    const handleCopyLink = (e, id) => {
+        e.stopPropagation(); 
+        const link = `${window.location.origin}/share/${id}`;
+        navigator.clipboard.writeText(link);
+        alert("SHARE LINK COPIED TO CLIPBOARD!");
+    };
+
     // We keep this as an instant visual fallback for the 15ms it takes the engine to boot
     const getApproximateCss = (s) => {
         if (!s) return 'none';
@@ -152,13 +159,29 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image }) => {
                                     NET_ID: {item.id.substring(0, 8)}
                                 </span>
                             </div>
-                            <button 
-                                className="btn-tech primary" 
-                                style={{ padding: '6px 14px', fontSize: '10px', marginLeft: '10px' }}
-                                onClick={() => handleApplyPreset(item.settings)}
-                            >
-                                APPLY
-                            </button>
+                            
+                            {/* NEW: WRAPPER FOR SHARE & APPLY BUTTONS */}
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <button 
+                                    className="btn-tech" 
+                                    style={{ padding: '6px 10px', fontSize: '10px', background: 'rgba(255,255,255,0.05)' }}
+                                    onClick={(e) => handleCopyLink(e, item.id)}
+                                    title="Copy Share Link"
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                    </svg>
+                                </button>
+
+                                <button 
+                                    className="btn-tech primary" 
+                                    style={{ padding: '6px 14px', fontSize: '10px' }}
+                                    onClick={() => handleApplyPreset(item.settings)}
+                                >
+                                    APPLY
+                                </button>
+                            </div>
                         </div>
                     ))}
                     {feed.length === 0 && (
@@ -342,12 +365,17 @@ const SmartSlider = memo(({ label, value, min, max, onChange, onSnapshot, def = 
 
 const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
     const [isOpen, setIsOpen] = useState(false);
-    const [localColor, setLocalColor] = useState(value); 
+    const [localColor, setLocalColor] = useState(value || "#ffffff"); 
+
+    const [hexInput, setHexInput] = useState((value || "ffffff").replace('#', ''));
+    
     const popoverRef = useRef();
+    const fallbackInputRef = useRef(null);
 
     useEffect(() => {
         if (!isOpen) {
             setLocalColor(value);
+            setHexInput(value ? value.replace('#', '') : 'ffffff');
         }
     }, [value, isOpen]);
 
@@ -363,11 +391,50 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
 
     const handleLiveChange = (newColor) => {
         setLocalColor(newColor); 
+        setHexInput(newColor.replace('#', ''));
         onChange(newColor);      
+    };
+
+    const handleHexInputChange = (e) => {
+        let rawVal = e.target.value.replace(/#/g, '');
+        
+        if (rawVal.length > 6) rawVal = rawVal.slice(0, 6);
+        
+        setHexInput(rawVal);
+
+        const isValid = /^([0-9A-F]{3}){1,2}$/i.test(rawVal);
+        
+        if (isValid) {
+            const fullHex = `#${rawVal}`;
+            if (onSnapshot) onSnapshot();
+            setLocalColor(fullHex);
+            onChange(fullHex);
+        }
+    };
+
+    const isInputValid = /^([0-9A-F]{3}){1,2}$/i.test(hexInput) || hexInput === '';
+
+    const handleEyeDropper = async () => {
+        if (window.isSecureContext && 'EyeDropper' in window) {
+            try {
+                const eyeDropper = new window.EyeDropper();
+                const result = await eyeDropper.open();
+                if (onSnapshot) onSnapshot(); 
+                handleLiveChange(result.sRGBHex); 
+            } catch (err) {
+                console.log("EyeDropper cancelled");
+            }
+        } else {
+            if (fallbackInputRef.current) {
+                if (onSnapshot) onSnapshot();
+                fallbackInputRef.current.click();
+            }
+        }
     };
 
     return (
         <div style={{ position: 'relative', marginTop: 5 }}>
+            {/* 1. ORIGINAL 40x40 SWATCH */}
             <div 
                 style={{
                     width: 40, 
@@ -384,6 +451,7 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
                 }}
             />
 
+            {/* 2. THE DROPDOWN MENU */}
             {isOpen && (
                 <div 
                     ref={popoverRef}
@@ -393,15 +461,83 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
                         left: 0, 
                         zIndex: 9999,
                         background: '#1a1a1a',
-                        padding: '10px',
+                        padding: '12px',
                         borderRadius: '8px',
                         boxShadow: '0 10px 25px rgba(0,0,0,0.8)',
-                        border: '1px solid #333'
+                        border: '1px solid #333',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
                     }}
                 >
                     <HexColorPicker 
                         color={localColor} 
                         onChange={handleLiveChange} 
+                    />
+                    
+                    {/* The Hex & Eyedropper Toolbar */}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        
+                        {/* WRAPPER FOR THE INPUT + HASHTAG */}
+                        <div style={{ 
+                            flex: 1, 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            background: '#0a0a0a', 
+                            border: isInputValid ? '1px solid #444' : '1px solid #ff3333', // Turns red if invalid
+                            borderRadius: '4px',
+                            padding: '0 8px',
+                            transition: 'border-color 0.2s ease'
+                        }}>
+                            {/* STATIC HASHTAG */}
+                            <span style={{ color: '#666', fontFamily: 'var(--font-mono, monospace)', fontSize: '11px' }}>
+                                #
+                            </span>
+                            
+                            {/* TEXT INPUT (Numbers/Letters only) */}
+                            <input 
+                                type="text" 
+                                value={hexInput}
+                                onChange={handleHexInputChange}
+                                spellCheck="false"
+                                style={{
+                                    flex: 1, 
+                                    background: 'transparent', 
+                                    border: 'none',
+                                    color: isInputValid ? 'var(--accent, #fff)' : '#ff3333', // Turns red if invalid
+                                    padding: '6px 4px', 
+                                    fontFamily: 'var(--font-mono, monospace)', 
+                                    fontSize: '11px', 
+                                    textTransform: 'uppercase', 
+                                    outline: 'none',
+                                    width: '100%'
+                                }}
+                            />
+                        </div>
+
+                        <button 
+                            className="btn-tech"
+                            onClick={handleEyeDropper}
+                            title="Direct Color Picker"
+                            style={{
+                                width: '30px', height: '30px', padding: 0, background: 'rgba(255,255,255,0.05)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '0', cursor: 'pointer'
+                            }}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+                                <line x1="12" y1="2.69" x2="12" y2="10"></line>
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* Hidden Safari Fallback */}
+                    <input 
+                        type="color" 
+                        ref={fallbackInputRef}
+                        value={localColor}
+                        onChange={(e) => handleLiveChange(e.target.value)}
+                        style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
                     />
                 </div>
             )}
@@ -446,6 +582,74 @@ const GradeControl = memo(({ label, tone, settings, setSettings, onSnapshot }) =
                     />
                 </div>
             </div>
+        </div>
+    );
+});
+
+// =========================================================================
+// NEW: SELECTIVE COLOR (HSL) PANEL
+// =========================================================================
+const SelectiveColorControl = memo(({ settings, setSettings, onSnapshot }) => {
+    const update = (key, val) => setSettings(p => ({ ...p, [key]: val }));
+
+    // Save state for undo/redo before dragging the hue spectrum
+    const handleHueMouseDown = () => { if (onSnapshot) onSnapshot(); };
+
+    return (
+        <div className="control-section" style={{ marginTop: 20 }}>
+            <div className="panel-header">SELECTIVE COLOR (HSL)</div>
+            
+            <div className="control-header" style={{marginBottom: 10, marginTop: 10}}>
+                <label>TARGET HUE</label>
+                <span className="control-val">{settings.targetHue || 0}°</span>
+            </div>
+
+            {/* LIGHTROOM-STYLE CONTINUOUS HUE SPECTRUM */}
+            <div style={{
+                position: 'relative',
+                height: '24px',
+                borderRadius: '6px',
+                marginBottom: '20px',
+                // Mathematically perfect 360-degree color wheel gradient
+                background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)',
+                boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.1)'
+            }}>
+                {/* Invisible native range input for perfect interaction handling */}
+                <input
+                    type="range" min="0" max="360"
+                    value={settings.targetHue || 0}
+                    onMouseDown={handleHueMouseDown}
+                    onChange={e => update('targetHue', parseInt(e.target.value))}
+                    style={{
+                        position: 'absolute', inset: 0, width: '100%', height: '100%',
+                        opacity: 0, cursor: 'crosshair', zIndex: 2
+                    }}
+                />
+                
+                {/* Custom Visual Thumb */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-3px', bottom: '-3px',
+                    left: `calc(${(settings.targetHue || 0) / 360 * 100}%)`,
+                    width: '14px', 
+                    transform: 'translateX(-50%)',
+                    background: '#ffffff',
+                    border: '2px solid #111',
+                    borderRadius: '50%',
+                    pointerEvents: 'none', 
+                    zIndex: 1,
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.8)'
+                }} />
+            </div>
+
+            <SmartSlider label="SELECTION FEATHER" value={settings.targetRange || 30} min={5} max={90} onChange={v=>update('targetRange',v)} onSnapshot={onSnapshot}/>
+            
+            <div className="sidebar-divider" style={{ margin: '15px 0' }} />
+            <div className="control-header" style={{marginBottom: 10}}><label>APPLY SHIFTS</label></div>
+
+            <SmartSlider label="SHIFT HUE" value={settings.targetHueShift || 0} min={-100} max={100} onChange={v=>update('targetHueShift',v)} onSnapshot={onSnapshot} def={0}/>
+            <SmartSlider label="SHIFT SATURATION" value={settings.targetSatShift || 0} min={-100} max={100} onChange={v=>update('targetSatShift',v)} onSnapshot={onSnapshot} def={0}/>
+            <SmartSlider label="SHIFT LIGHTNESS" value={settings.targetLumShift || 0} min={-100} max={100} onChange={v=>update('targetLumShift',v)} onSnapshot={onSnapshot} def={0}/>
         </div>
     );
 });
@@ -617,6 +821,8 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
             {['shadows','midtones','highlights'].map(t => 
                 <GradeControl key={t} label={t.toUpperCase()} tone={t} settings={settings} setSettings={setSettings} onSnapshot={onSnapshot}/>
             )}
+            
+            <SelectiveColorControl settings={settings} setSettings={setSettings} onSnapshot={onSnapshot} />
           </div>
         )}
 

@@ -7,6 +7,7 @@
 
 import { runCorePipeline } from './CorePipeline';
 import { injectMetadata } from './MetadataSystem'; 
+import piexif from "piexifjs";
 
 const blobToBase64 = (blob) => new Promise((res, rej) => {
     const reader = new FileReader();
@@ -15,7 +16,7 @@ const blobToBase64 = (blob) => new Promise((res, rej) => {
     reader.readAsDataURL(blob);
 });
 
-export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
+export const exportImage = async (imageSrc, settings, format = 'jpeg', session = null, compressionFactor = 0.6) => {
   if (!imageSrc) return;
 
   console.log("[LUMAFORGE_EXPORT] Archiving Source Negative...");
@@ -43,7 +44,6 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   let cropX = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.x / 100) * RW;
   let cropY = settings.aspectRatio === 'ORIGINAL' ? 0 : (settings.crop.y / 100) * RH;
 
-  // STAGE 1: Extract the Cropped Region Unrotated
   const unrotatedCanvas = document.createElement('canvas');
   unrotatedCanvas.width = cropW;
   unrotatedCanvas.height = cropH;
@@ -57,11 +57,9 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   uCtx.translate(-cropW/2, -cropH/2);
   uCtx.drawImage(rawRenderCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-  // STAGE 2: Rotate and Flip on an Expanding Canvas
   const isRotated = settings.rotate === 90 || settings.rotate === 270;
   const finalCanvas = document.createElement('canvas');
   
-  // SWAP WIDTH AND HEIGHT IF ROTATED TO PREVENT CLIPPING
   finalCanvas.width = isRotated ? cropH : cropW;
   finalCanvas.height = isRotated ? cropW : cropH;
   
@@ -75,7 +73,6 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
   fCtx.translate(-cropW/2, -cropH/2);
   fCtx.drawImage(unrotatedCanvas, 0, 0);
 
-  // VIGNETTE 
   if (settings.vignette !== 0) {
       fCtx.setTransform(1, 0, 0, 1, 0, 0); 
       fCtx.globalCompositeOperation = 'source-over';
@@ -88,8 +85,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       fCtx.fillStyle = grad;
       fCtx.fillRect(0, 0, fW, fH);
   }
-  
-  // UNIFIED & ALIGNABLE WATERMARK ENGINE (Stacks stacked logo & text)
+
   if (settings.watermark) {
       console.log("[LUMAFORGE_EXPORT] Synthesizing Watermark Geometry Stack...");
       
@@ -97,10 +93,9 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       const fH = finalCanvas.height;
       const padding = Math.max(20, fW * 0.03); 
 
-      // Reset transforms and apply global style for the whole stack
       fCtx.setTransform(1, 0, 0, 1, 0, 0); 
       fCtx.globalCompositeOperation = 'source-over';
-      fCtx.globalAlpha = 0.6; // Subtle transparency
+      fCtx.globalAlpha = 0.6; 
       fCtx.shadowColor = "rgba(0,0,0,0.85)";
       fCtx.shadowBlur = Math.max(10, fW * 0.01); 
       fCtx.shadowOffsetY = Math.max(2, fW * 0.002);
@@ -111,9 +106,8 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       let stackWidth = 0;
       let stackHeight = 0;
       
-      // Calculate Font Geometry FIRST
       const fontSize = Math.max(20, fW * 0.025); 
-      fCtx.font = `bold ${fontSize}px monospace`; // High-contrast monospace
+      fCtx.font = `bold ${fontSize}px monospace`; 
       const usernameText = settings.watermarkUser || 'sganeshe';
       const userTextMetrics = fCtx.measureText(usernameText);
       const userTextWidth = userTextMetrics.width;
@@ -122,104 +116,144 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg') => {
       const mainTextMetrics = fCtx.measureText(mainText);
       const mainTextWidth = mainTextMetrics.width;
 
-      // 1. ATTEMPT LOGO GEOMETRY CALCULATION
       try {
           logoImg = await new Promise((res, rej) => {
-              const img = new Image(); 
-              img.onload = () => res(img); 
-              img.onerror = rej; 
-              img.src = '/lf_white.png'; 
+              const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = '/lf_white.png'; 
           });
-          
-          logoWidth = Math.max(80, fW * 0.12); // Dynamic logo width
+          logoWidth = Math.max(80, fW * 0.12); 
           logoHeight = logoImg.height * (logoWidth / logoImg.width);
-          
-          // Total stack width is wider element
           stackWidth = Math.max(logoWidth, userTextWidth);
-          // Logo + gap (20%) + Username
           stackHeight = logoHeight + (fontSize * 1.2); 
       } catch (err) { 
-          // 2. FALLBACK: TEXT-ONLY STACK (If logo fails)
           console.warn("[LUMAFORGE_ASSET_FAULT] Watermark image missing. Using dual-text stack.");
-          logoWidth = 0;
-          logoHeight = 0;
+          logoWidth = 0; logoHeight = 0;
           stackWidth = Math.max(mainTextWidth, userTextWidth);
           stackHeight = fontSize * 2.2; 
       }
 
-      // 3. CALCULATE X-POSITION BASED ON ALIGNMENT
       let finalX = 0;
       switch (settings.watermarkAlign) {
-          case 'left':
-              finalX = padding;
-              break;
-          case 'center':
-              finalX = (fW / 2) - (stackWidth / 2);
-              break;
-          case 'right':
-          default:
-              finalX = fW - stackWidth - padding;
-              break;
+          case 'left': finalX = padding; break;
+          case 'center': finalX = (fW / 2) - (stackWidth / 2); break;
+          case 'right': default: finalX = fW - stackWidth - padding; break;
       }
 
-      // 4. DRAWING LOOP
       fCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
-      
       if (settings.watermarkAlign === 'center') {
           fCtx.textAlign = "center";
           const centerX = finalX + (stackWidth / 2); 
-          
-          if (logoImg) {
-              fCtx.drawImage(logoImg, centerX - (logoWidth/2), fH - stackHeight - padding, logoWidth, logoHeight);
-          } else {
-              fCtx.fillText(mainText, centerX, fH - stackHeight - padding + fontSize);
-          }
+          if (logoImg) fCtx.drawImage(logoImg, centerX - (logoWidth/2), fH - stackHeight - padding, logoWidth, logoHeight);
+          else fCtx.fillText(mainText, centerX, fH - stackHeight - padding + fontSize);
           fCtx.fillText(usernameText, centerX, fH - padding);
-
       } else {
-          // Left or Right aligned stack. 
           fCtx.textAlign = settings.watermarkAlign; 
-          
           const textX = settings.watermarkAlign === 'left' ? finalX : finalX + stackWidth;
           const logoDrawX = settings.watermarkAlign === 'left' ? finalX : finalX + (stackWidth - logoWidth);
-
-          if (logoImg) {
-              fCtx.drawImage(logoImg, logoDrawX, fH - stackHeight - padding, logoWidth, logoHeight);
-          } else {
-              fCtx.fillText(mainText, textX, fH - stackHeight - padding + fontSize);
-          }
+          if (logoImg) fCtx.drawImage(logoImg, logoDrawX, fH - stackHeight - padding, logoWidth, logoHeight);
+          else fCtx.fillText(mainText, textX, fH - stackHeight - padding + fontSize);
           fCtx.fillText(usernameText, textX, fH - padding);
       }
       fCtx.restore();
   }
 
-  return new Promise((resolve, reject) => {
-      const mimeType = isPNG ? 'image/png' : 'image/jpeg';
-      const quality = isPNG ? 1.0 : 0.95;
+  let exportCanvas = finalCanvas;
+  
+  // If it is a PNG, we apply the compression factor to physically shrink the canvas matrix
+  if (isPNG && compressionFactor > 0 && compressionFactor < 1.0) {
+      console.log(`[LUMAFORGE_EXPORT] Compressing PNG matrix by ${Math.round((1 - compressionFactor) * 100)}%...`);
+      
+      const compressedCanvas = document.createElement('canvas');
+      compressedCanvas.width = finalCanvas.width * compressionFactor;
+      compressedCanvas.height = finalCanvas.height * compressionFactor;
+      
+      const compCtx = compressedCanvas.getContext('2d');
+      compCtx.imageSmoothingEnabled = true;
+      compCtx.imageSmoothingQuality = 'high'; // Ensures the downscale remains sharp
+      
+      compCtx.drawImage(finalCanvas, 0, 0, compressedCanvas.width, compressedCanvas.height);
+      exportCanvas = compressedCanvas;
+  }
 
-      finalCanvas.toBlob(async (blob) => {
-          if (!blob) return reject(new Error("Canvas toBlob failed."));
-          
-          let finalBlob = blob;
-          
-          if (isPNG) {
-              console.log("[LUMAFORGE_EXPORT] Encoding Black Box Data...");
-              const projectPayload = { settings: settings, source: sourceBase64, timestamp: Date.now(), version: "4.3.1" };
-              try { 
-                  finalBlob = await injectMetadata(blob, projectPayload); 
-              } catch (e) { 
-                  console.warn("[LUMAFORGE_ENCODE_FAULT] Steganography failed.", e); 
+  // =========================================================================
+  // STAGE 3: THE METADATA EMBEDDER
+  // =========================================================================
+  return new Promise(async (resolve, reject) => {
+      try {
+          const mimeType = isPNG ? 'image/png' : 'image/jpeg';
+          const quality = isPNG ? 1.0 : 0.95;
+
+          let dataUrl = exportCanvas.toDataURL(mimeType, quality);
+
+          if (settings.watermark && session) {
+              const creatorName = settings.watermarkUser || (session.user && session.user.email) || 'Verified Creator';
+              const softwareTag = "Lumaforge v1.4.0 (Verified)";
+
+              if (!isPNG) {
+                  try {
+                      const zeroth = {};
+                      const exif = {};
+                      
+                      zeroth[piexif.ImageIFD.Artist] = creatorName;
+                      zeroth[piexif.ImageIFD.Software] = softwareTag;
+                      zeroth[piexif.ImageIFD.Copyright] = `© ${new Date().getFullYear()} ${creatorName}`;
+
+                      const provenanceReceipt = JSON.stringify({
+                          app: "Lumaforge",
+                          creator_id: session.user.id,
+                          verified: true,
+                          timestamp: new Date().toISOString()
+                      });
+                      exif[piexif.ExifIFD.UserComment] = piexif.helper.encode(provenanceReceipt);
+
+                      const exifObj = { "0th": zeroth, "Exif": exif };
+                      const exifBytes = piexif.dump(exifObj);
+                      
+                      dataUrl = piexif.insert(exifBytes, dataUrl);
+                      console.log("[LUMAFORGE_I/O] JPEG EXIF Provenance Attached.");
+                  } catch (err) {
+                      console.error("[LUMAFORGE_I/O] EXIF Injection Failed:", err);
+                  }
+              } else {
+                  console.log("[LUMAFORGE_EXPORT] Encoding PNG Black Box Data...");
+                  
+                  const blobRes = await fetch(dataUrl);
+                  const rawBlob = await blobRes.blob();
+
+                  const projectPayload = { 
+                      settings: settings, 
+                      source: sourceBase64, 
+                      creator: creatorName,
+                      software: softwareTag,
+                      timestamp: Date.now(), 
+                      version: "1.4.0" 
+                  };
+
+                  try { 
+                      const finalBlob = await injectMetadata(rawBlob, projectPayload); 
+                      dataUrl = await blobToBase64(finalBlob);
+                      console.log("[LUMAFORGE_I/O] PNG Steganographic Provenance Attached.");
+                  } catch (e) { 
+                      console.warn("[LUMAFORGE_ENCODE_FAULT] Steganography failed.", e); 
+                  }
               }
+          } else {
+              console.log("[LUMAFORGE_I/O] Exporting Anonymous File (Watermark Inactive).");
           }
-          
+
+          const ext = isPNG ? 'png' : 'jpg';
+          const filename = settings.watermark ? `Lumaforge_Signed_${Date.now()}.${ext}` : `Lumaforge_Raw_${Date.now()}.${ext}`;
+
           const link = document.createElement('a');
-          link.download = `LUMAFORGE_${Date.now()}.${format}`;
-          link.href = URL.createObjectURL(finalBlob);
+          link.download = filename;
+          link.href = dataUrl;
+          document.body.appendChild(link);
           link.click();
+          document.body.removeChild(link);
           
-          URL.revokeObjectURL(link.href);
           resolve(); 
-      }, mimeType, quality);
+      } catch (error) {
+          reject(error);
+      }
   });
 };
 
@@ -281,8 +315,7 @@ export const generateExportBlob = async (imageSrc, settings) => {
         fCtx.fillStyle = grad;
         fCtx.fillRect(0, 0, fW, fH);
     }
-    
-    // Cloud blobs apply watermark if set
+
     if (settings.watermark) {
       const fW = finalCanvas.width;
       const fH = finalCanvas.height;

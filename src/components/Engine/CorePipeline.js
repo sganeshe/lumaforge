@@ -9,6 +9,85 @@
 import { applyLutToPixel } from './LUTSystem';
 import { generateCurveLUT } from './CurvesMath';
 
+// =========================================================================
+// HSL HELPERS (For Selective Color Targeting)
+// =========================================================================
+const rgbToHsl = (r, g, b) => {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; } 
+    else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return [h * 360, s * 100, l * 100];
+};
+
+const hslToRgb = (h, s, l) => {
+    h /= 360; s /= 100; l /= 100;
+    let r, g, b;
+    if (s === 0) { r = g = b = l; } 
+    else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+    return [r * 255, g * 255, b * 255];
+};
+
+// --- FAST SPATIAL BOX BLUR FOR MASKS ---
+const applySpatialBlur = (mask, width, height, radius) => {
+    if (radius < 1) return mask;
+    let temp = new Float32Array(mask.length);
+    let finalMask = new Float32Array(mask.length);
+
+    // Horizontal Pass
+    for (let y = 0; y < height; y++) {
+        let sum = 0;
+        let offset = y * width;
+        for (let i = 0; i < radius; i++) sum += mask[offset + i];
+        for (let x = 0; x < width; x++) {
+            if (x + radius < width) sum += mask[offset + x + radius];
+            if (x - radius > 0) sum -= mask[offset + x - radius - 1];
+            let count = Math.min(x + radius, width - 1) - Math.max(x - radius, 0) + 1;
+            temp[offset + x] = sum / count;
+        }
+    }
+
+    // Vertical Pass
+    for (let x = 0; x < width; x++) {
+        let sum = 0;
+        for (let i = 0; i < radius; i++) sum += temp[i * width + x];
+        for (let y = 0; y < height; y++) {
+            if (y + radius < height) sum += temp[(y + radius) * width + x];
+            if (y - radius > 0) sum -= temp[(y - radius - 1) * width + x];
+            let count = Math.min(y + radius, height - 1) - Math.max(y - radius, 0) + 1;
+            finalMask[y * width + x] = sum / count;
+        }
+    }
+    return finalMask;
+};
+
+// =========================================================================
+// THE CORE PIPELINE
+// =========================================================================
 export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -87,7 +166,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 }
 
                 /* =========================================================================
-                   STAGE 3: MAIN PIXEL LOOP
+                   STAGE 3: MAIN LOOP
                    ========================================================================= */
                 const imgData = ctx.getImageData(0, 0, w, h);
                 const data = imgData.data;
@@ -130,8 +209,11 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const isCurveActive = (sC.master?.length > 2) || (sC.red?.length > 2) || (sC.green?.length > 2) || (sC.blue?.length > 2);
                 const isGradingActive = gS.r !== 0 || gS.g !== 0 || gS.b !== 0 || gM.r !== 0 || gM.g !== 0 || gM.b !== 0 || gH.r !== 0 || gH.g !== 0 || gH.b !== 0;
                 
-                // NO MASKING LOGIC HERE ANYMORE
-                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || whiteVal !== 0 || blackVal !== 0 || isGradingActive || isCurveActive;
+                const isSelectiveColorActive = (settings.targetHueShift !== undefined && settings.targetHueShift !== 0) || 
+                                               (settings.targetSatShift !== undefined && settings.targetSatShift !== 0) || 
+                                               (settings.targetLumShift !== undefined && settings.targetLumShift !== 0);
+                
+                const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || whiteVal !== 0 || blackVal !== 0 || isGradingActive || isCurveActive || isSelectiveColorActive;
 
                 let noiseLUT = null;
                 if (grainInt > 0 && needsPixelLoop) {
@@ -185,6 +267,47 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                 r += (gS.r * shadowWeight + gM.r * midtoneWeight + gH.r * highlightWeight) * 255;
                                 g += (gS.g * shadowWeight + gM.g * midtoneWeight + gH.g * highlightWeight) * 255;
                                 b += (gS.b * shadowWeight + gM.b * midtoneWeight + gH.b * highlightWeight) * 255;
+                            }
+
+                            // =====================================================================
+                            // SELECTIVE COLOR (HSL)
+                            // =====================================================================
+                            const isSelectiveColorActive = settings.targetRange > 0 && 
+                                (settings.targetHueShift !== 0 || settings.targetSatShift !== 0 || settings.targetLumShift !== 0);
+
+                            if (isSelectiveColorActive) {
+                                let [pHue, pSat, pLum] = rgbToHsl(r, g, b); 
+
+                                let dist = Math.abs(pHue - (settings.targetHue || 0));
+                                if (dist > 180) dist = 360 - dist;
+
+                                const range = settings.targetRange || 30;
+                                if (dist < range) {
+                                    let falloff = 1 - (dist / range);
+                                    falloff = falloff * falloff * (3 - 2 * falloff); 
+
+                                    pHue = (pHue + (settings.targetHueShift || 0) * falloff + 360) % 360;
+
+                                    let sShift = (settings.targetSatShift || 0) * falloff;
+                                    if (sShift > 0) {
+                                        pSat += (100 - pSat) * (sShift / 100);
+                                    } else {
+                                        pSat += pSat * (sShift / 100);
+                                    }
+
+                                    let lShift = (settings.targetLumShift || 0) * falloff;
+                                    if (lShift > 0) {
+                                        pLum += (100 - pLum) * (lShift / 100);
+                                    } else {
+                                        pLum += pLum * (lShift / 100);
+                                    }
+
+                                    pSat = Math.max(0, Math.min(100, pSat));
+                                    pLum = Math.max(0, Math.min(100, pLum));
+
+                                    const [nr, ng, nb] = hslToRgb(pHue, pSat, pLum);
+                                    r = nr; g = ng; b = nb;
+                                }
                             }
 
                             if (grainInt > 0 && noiseLUT) {
@@ -258,7 +381,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 }
 
                 /* =========================================================================
-                   STAGE 5: THE MASTER MASK COMPOSITE (WITH GPU FEATHERING & OVERLAY)
+                   STAGE 5: THE MASTER MASK COMPOSITE (WITH FEATHERING & OVERLAY)
                    ========================================================================= */
                 const hasMask = settings.semanticMask && settings.semanticMask.length > 0;
                 
@@ -267,7 +390,6 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     const maskW = settings.maskWidth || 256;
                     const maskH = settings.maskHeight || 256;
 
-                    // 1. Reconstruct the tiny 256x256 AI mask into a 2D Canvas Image
                     const tinyMaskCvs = document.createElement('canvas');
                     tinyMaskCvs.width = maskW; tinyMaskCvs.height = maskH;
                     const tinyMaskCtx = tinyMaskCvs.getContext('2d');
@@ -276,63 +398,51 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     for(let i = 0; i < mLen; i++){
                         const val = settings.semanticMask[i];
                         const idx = i * 4;
-                        tinyMaskImg.data[idx] = val;     // R
-                        tinyMaskImg.data[idx+1] = val;   // G
-                        tinyMaskImg.data[idx+2] = val;   // B
-                        tinyMaskImg.data[idx+3] = 255;   // A (Fully opaque)
+                        tinyMaskImg.data[idx] = val;
+                        tinyMaskImg.data[idx+1] = val;
+                        tinyMaskImg.data[idx+2] = val;
+                        tinyMaskImg.data[idx+3] = 255;
                     }
                     tinyMaskCtx.putImageData(tinyMaskImg, 0, 0);
 
-                    // 2. Hardware-Accelerate the Upscaling and Feathering (Gaussian Blur)
                     const bigMaskCvs = document.createElement('canvas');
                     bigMaskCvs.width = w; bigMaskCvs.height = h;
                     const bigMaskCtx = bigMaskCvs.getContext('2d', { willReadFrequently: true });
                     
-                    // Default to a 25px blur for smooth edges
                     const featherAmt = settings.maskFeather !== undefined ? settings.maskFeather : 25; 
-                    
-                    // Multiply blur by resMult so the blur ratio matches the export resolution!
+
                     bigMaskCtx.filter = `blur(${featherAmt * resMult}px)`; 
-                    
-                    // drawImage natively applies Bilinear Interpolation, instantly removing all blockiness
+
                     bigMaskCtx.drawImage(tinyMaskCvs, 0, 0, w, h);
-                    
-                    // Extract the perfectly smooth, upscaled mask data
+
                     const smoothMaskData = bigMaskCtx.getImageData(0, 0, w, h).data;
                     const maskOpacity = settings.maskOpacity !== undefined ? settings.maskOpacity / 100 : 1.0;
 
-                    // 3. Get the pure, untouched original pixels
                     const rawCanvas = document.createElement('canvas');
                     rawCanvas.width = w; rawCanvas.height = h;
                     const rawCtx = rawCanvas.getContext('2d');
                     rawCtx.drawImage(img, 0, 0, w, h);
                     const rawData = rawCtx.getImageData(0, 0, w, h).data;
 
-                    // 4. Get the fully edited pixels (with exposure, contrast, etc.)
                     const finalData = ctx.getImageData(0, 0, w, h);
                     const fd = finalData.data;
 
-                    // 5. Splice them together using the smoothed GPU mask
                     for (let y = 0; y < h; y++) {
                         for (let x = 0; x < w; x++) {
                             const i = (y * w + x) * 4;
 
-                            // The Red channel (smoothMaskData[i]) contains our interpolated 0-255 mask value
                             const maskConfidence = (smoothMaskData[i] / 255.0) * maskOpacity;
                             const blendWeight = settings.invertMask ? (1.0 - maskConfidence) : maskConfidence;
 
-                            // Linear Interpolation: Blend raw unedited pixel with fully edited pixel
                             fd[i]   = rawData[i]   + (fd[i]   - rawData[i])   * blendWeight;
                             fd[i+1] = rawData[i+1] + (fd[i+1] - rawData[i+1]) * blendWeight;
                             fd[i+2] = rawData[i+2] + (fd[i+2] - rawData[i+2]) * blendWeight;
 
-                            // --- MASK OVERLAY HIGHLIGHT LOGIC ---
                             if (settings.showMaskOverlay) {
-                                // 50% Opacity Ruby Red applied exactly where the mask applies
                                 const overlayStrength = blendWeight * 0.5; 
-                                fd[i]   = fd[i]   * (1 - overlayStrength) + (255 * overlayStrength); // Red
-                                fd[i+1] = fd[i+1] * (1 - overlayStrength) + (0 * overlayStrength);   // Green
-                                fd[i+2] = fd[i+2] * (1 - overlayStrength) + (0 * overlayStrength);   // Blue
+                                fd[i]   = fd[i]   * (1 - overlayStrength) + (255 * overlayStrength);
+                                fd[i+1] = fd[i+1] * (1 - overlayStrength) + (0 * overlayStrength);
+                                fd[i+2] = fd[i+2] * (1 - overlayStrength) + (0 * overlayStrength);
                             }
                         }
                     }

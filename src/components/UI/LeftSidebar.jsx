@@ -66,7 +66,7 @@ export const LeftSidebar = ({
                 <button className="nav-btn shell-btn" onClick={onHome}>← SHELL</button>
                 <div className="logo-container">
                     <img src="/lf_orange.png" alt="LUMAFORGE" />
-                    <span className="version-tag">v1.3.0</span>
+                    <span className="version-tag">v1.4.0</span>
                 </div>
                 
                 {/* HAMBURGER TOGGLE */}
@@ -127,7 +127,7 @@ export const LeftSidebar = ({
 
                     {activeTab === 'LOCAL' && (
                         <div className="sidebar-section">
-                            <button className="secondary-btn" onClick={onImportFile}>IMPORT IMAGE</button>
+                            <button className="secondary-btn" onClick={onImportFile}>IMPORT IMAGE/LUT</button>
                             <button className="secondary-btn" onClick={onExportCube} style={{marginTop: 10}}>EXPORT .CUBE (LUT)</button>
                         </div>
                     )}
@@ -140,7 +140,7 @@ export const LeftSidebar = ({
                         <button className={exportFormat === 'png' ? 'active' : ''} onClick={() => setExportFormat('png')}>.PNG</button>
                     </div>
                     <div className="status-label" style={{marginBottom: 15}}>
-                        {exportFormat === 'png' ? '[ METADATA ENABLED ]' : '[ COMPRESSION ENABLED ]'}
+                        {exportFormat === 'png' ? '[ PNG ENABLED ]' : '[ JPG ENABLED ]'}
                     </div>
                     
                     <button className="primary-btn" onClick={() => {
