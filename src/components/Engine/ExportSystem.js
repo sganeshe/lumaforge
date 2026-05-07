@@ -203,7 +203,8 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg', session =
                           verified: true,
                           timestamp: new Date().toISOString()
                       });
-                      exif[piexif.ExifIFD.UserComment] = piexif.helper.encode(provenanceReceipt);
+
+                      exif[piexif.ExifIFD.UserComment] = "ASCII\0\0\0" + provenanceReceipt;
 
                       const exifObj = { "0th": zeroth, "Exif": exif };
                       const exifBytes = piexif.dump(exifObj);
