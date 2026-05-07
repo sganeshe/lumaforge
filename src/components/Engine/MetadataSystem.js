@@ -90,14 +90,14 @@ export const readMetadata = async (file) => {
                 const dataUrl = await blobToBase64(file);
                 const exifObj = piexif.load(dataUrl);
                 
-                let userComment = exifObj["Exif"][piexif.ExifIFD.UserComment];
-                if (userComment) {
-                    // Convert to string if piexif returned a byte array
+                if (exifObj && exifObj["Exif"] && exifObj["Exif"][piexif.ExifIFD.UserComment]) {
+                    
+                    let userComment = exifObj["Exif"][piexif.ExifIFD.UserComment];
+                    
                     if (Array.isArray(userComment) || userComment instanceof Uint8Array) {
                         userComment = String.fromCharCode.apply(null, Array.from(userComment));
                     }
                     
-                    // Strip the 8-byte "ASCII\0\0\0" header we injected during export
                     if (userComment.startsWith("ASCII\0\0\0")) {
                         userComment = userComment.substring(8);
                     }
@@ -106,11 +106,11 @@ export const readMetadata = async (file) => {
                     console.log("[LUMAFORGE_SYSTEM] JPEG Provenance Payload Extracted.");
                     return payload;
                 } else {
-                    console.log("[LUMAFORGE_SYSTEM] No Lumaforge EXIF found in JPEG.");
+                    console.log("[LUMAFORGE_SYSTEM] Normal JPEG. No Lumaforge EXIF found.");
                     return null;
                 }
             } catch (err) {
-                console.warn("[LUMAFORGE_FAULT] Failed to parse JPEG EXIF:", err);
+                console.warn("[LUMAFORGE_FAULT] Failed to parse JPEG EXIF (Corrupt or Empty):", err);
                 return null;
             }
         }
