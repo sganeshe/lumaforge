@@ -27,7 +27,6 @@ import { supabase } from './lib/supabaseClient';
 import { getFreshState } from './utils/constants'; 
 import { useSystemClock } from './hooks/useSystemClock'; 
 import './styles/index.css';
-import { Analytics } from "@vercel/analytics/next";
 
 /* =========================================================================
    ROUTING WRAPPERS & PRESENTATIONAL VIEWS
