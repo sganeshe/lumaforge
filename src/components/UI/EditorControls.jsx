@@ -101,7 +101,7 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
         alert("SHARE LINK COPIED TO CLIPBOARD!");
     };
 
-    // --- NEW: DEPLOY TO UPLINK LOGIC ---
+    // --- DEPLOY TO UPLINK LOGIC ---
     const handleDeployToUplink = async () => {
         if (!session) {
             alert("AUTHENTICATION REQUIRED: Please log in to deploy to the Uplink network.");
@@ -112,36 +112,55 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
         if (!presetName) return; 
 
         try {
-            console.log("[UPLINK] Initiating payload transfer...");
+            console.log("[UPLINK] Rendering visual snapshot...");
 
-            // Get the user's handle from their email
+            const thumbCanvas = await runCorePipeline(image, settings, 400);
+            const blob = await new Promise(resolve => thumbCanvas.toBlob(resolve, 'image/jpeg', 0.8));
+
+            const fileName = `preset_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+            
+            const { error: uploadError } = await supabase.storage
+                .from('uplink_images')
+                .upload(fileName, blob);
+
+            if (uploadError) {
+                throw new Error(`Storage failed: ${uploadError.message}`);
+            }
+
+            const { data: urlData } = supabase.storage
+                .from('uplink_images')
+                .getPublicUrl(fileName);
+            
+            const imageUrl = urlData.publicUrl;
+
+            console.log("[UPLINK] Initiating database payload transfer...");
+
             const authorName = session.user.email.split('@')[0];
 
-            const { error } = await supabase
+            const { error: dbError } = await supabase
                 .from('uplink_posts')
                 .insert([
                     {
                         preset_name: presetName,
                         author_name: authorName,
                         settings: settings, 
+                        image_url: imageUrl,
                         upvotes_count: 0,
                         upvoted_by: []
-                        // Note: You can add an image_url here later if you want to generate thumbnails!
                     }
                 ]);
 
-            if (error) throw error;
+            if (dbError) throw dbError;
             
             console.log("[UPLINK] Deployment successful.");
             alert("PRESET DEPLOYED TO THE GLOBAL NETWORK!");
             
-            // Re-fetch the feed so their new post shows up instantly!
             const { data } = await supabase.from('uplink_posts').select('*').order('created_at', { ascending: false }).limit(50);
             if (data) setFeed(data);
 
         } catch (err) {
             console.error("[UPLINK_FAULT] Database insertion failed:", err);
-            alert("DEPLOYMENT FAILED. Check console for telemetry.");
+            alert(`DEPLOYMENT FAILED: ${err.message}`);
         }
     };
 
