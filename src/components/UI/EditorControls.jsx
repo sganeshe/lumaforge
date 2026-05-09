@@ -9,7 +9,7 @@ import { runCorePipeline } from '../Engine/CorePipeline';
 // =========================================================================
 // UPLINK BROWSER COMPONENT (WITH PERFECT HOVER PREVIEW)
 // =========================================================================
-const UplinkBrowser = memo(({ setSettings, onSnapshot, image }) => {
+const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session }) => {
     const [feed, setFeed] = useState([]);
     const [loading, setLoading] = useState(true);
     
@@ -99,6 +99,50 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image }) => {
         const link = `${window.location.origin}/share/${id}`;
         navigator.clipboard.writeText(link);
         alert("SHARE LINK COPIED TO CLIPBOARD!");
+    };
+
+    // --- NEW: DEPLOY TO UPLINK LOGIC ---
+    const handleDeployToUplink = async () => {
+        if (!session) {
+            alert("AUTHENTICATION REQUIRED: Please log in to deploy to the Uplink network.");
+            return;
+        }
+
+        const presetName = prompt("ENTER A NAME FOR YOUR PRESET:", "CUSTOM_GRADE");
+        if (!presetName) return; 
+
+        try {
+            console.log("[UPLINK] Initiating payload transfer...");
+
+            // Get the user's handle from their email
+            const authorName = session.user.email.split('@')[0];
+
+            const { error } = await supabase
+                .from('uplink_posts')
+                .insert([
+                    {
+                        preset_name: presetName,
+                        author_name: authorName,
+                        settings: settings, 
+                        upvotes_count: 0,
+                        upvoted_by: []
+                        // Note: You can add an image_url here later if you want to generate thumbnails!
+                    }
+                ]);
+
+            if (error) throw error;
+            
+            console.log("[UPLINK] Deployment successful.");
+            alert("PRESET DEPLOYED TO THE GLOBAL NETWORK!");
+            
+            // Re-fetch the feed so their new post shows up instantly!
+            const { data } = await supabase.from('uplink_posts').select('*').order('created_at', { ascending: false }).limit(50);
+            if (data) setFeed(data);
+
+        } catch (err) {
+            console.error("[UPLINK_FAULT] Database insertion failed:", err);
+            alert("DEPLOYMENT FAILED. Check console for telemetry.");
+        }
     };
 
     // We keep this as an instant visual fallback for the 15ms it takes the engine to boot
@@ -238,6 +282,16 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image }) => {
                     <div style={{ position: 'absolute', bottom: 5, right: 5, fontSize: 9, background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>PREVIEW</div>
                 </div>
             )}
+
+            <div style={{ marginTop: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <button 
+                    onClick={handleDeployToUplink}
+                    className="btn-tech primary"
+                    style={{ width: '100%', padding: '10px', fontSize: '11px', letterSpacing: '2px', border: '1px solid var(--amber)' }}
+                >
+                    [ DEPLOY WORKSPACE TO UPLINK ]
+                </button>
+            </div>
         </div>
     );
 });
