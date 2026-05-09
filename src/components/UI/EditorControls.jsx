@@ -287,9 +287,9 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
                 <button 
                     onClick={handleDeployToUplink}
                     className="btn-tech primary"
-                    style={{ width: '100%', padding: '10px', fontSize: '11px', letterSpacing: '2px', border: '1px solid var(--amber)' }}
+                    style={{ width: '100%', padding: '15px', fontSize: '11px', letterSpacing: '2px', border: '1px solid var(--amber)' }}
                 >
-                    [ DEPLOY WORKSPACE TO UPLINK ]
+                    DEPLOY WORKSPACE TO FEED
                 </button>
             </div>
         </div>
