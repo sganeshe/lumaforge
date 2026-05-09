@@ -923,7 +923,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
 
         {/* 7. NEW UPLINK PANEL */}
         {activeTab === 'UPLINK' && (
-            <UplinkBrowser setSettings={setSettings} onSnapshot={onSnapshot} image={image} />
+            <UplinkBrowser setSettings={setSettings} onSnapshot={onSnapshot} image={image} settings={settings} session={session} />
         )}
 
         {/* 8. DATA */}
