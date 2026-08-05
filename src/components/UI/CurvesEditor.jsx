@@ -5,7 +5,6 @@ const CurvesEditor = ({ settings, setSettings, onSnapshot }) => {
   const [activeChannel, setActiveChannel] = useState('master'); 
   const svgRef = useRef(null);
   
-  // Interaction State
   const [dragIdx, setDragIdx] = useState(null);
   const [hasDragged, setHasDragged] = useState(false); 
 
@@ -24,7 +23,6 @@ const CurvesEditor = ({ settings, setSettings, onSnapshot }) => {
     }));
   };
 
-  // HELPER: Extracts coordinates from both Mouse and Touch events
   const getCoordinates = (e) => {
     if (e.touches && e.touches.length > 0) {
         return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
@@ -38,7 +36,6 @@ const CurvesEditor = ({ settings, setSettings, onSnapshot }) => {
     const lx = ((clientX - rect.left) / 200) * 255;
     const ly = 255 - ((clientY - rect.top) / 200) * 255;
 
-    // Fat-finger tolerance: Increased hit radius to 20 for easier mobile tapping
     const hitIndex = localPoints.findIndex(p => Math.hypot(p.x - lx, p.y - ly) < 20);
 
     if (hitIndex !== -1) {
@@ -125,7 +122,7 @@ const CurvesEditor = ({ settings, setSettings, onSnapshot }) => {
             key={ch}
             onClick={() => setActiveChannel(ch)}
             style={{
-              width: 24, height: 24, borderRadius: '50%', // Increased size for touch targets
+              width: 24, height: 24, borderRadius: '50%',
               border: `2px solid ${activeChannel === ch ? '#fff' : '#444'}`,
               background: colors[ch],
               opacity: activeChannel === ch ? 1 : 0.3,
@@ -143,7 +140,7 @@ const CurvesEditor = ({ settings, setSettings, onSnapshot }) => {
           background: '#111', border: '1px solid #333',
           position: 'relative', margin: '0 auto',
           cursor: dragIdx !== null ? 'grabbing' : 'crosshair',
-          touchAction: 'none' // STRICT MOBILE SCROLL LOCK
+          touchAction: 'none'
         }}
         onMouseLeave={handlePointerUp}
         onMouseUp={handlePointerUp}
@@ -172,10 +169,10 @@ const CurvesEditor = ({ settings, setSettings, onSnapshot }) => {
               key={i}
               cx={(p.x / 255) * 200}
               cy={200 - (p.y / 255) * 200}
-              r={dragIdx === i ? 8 : 6} // Slightly larger nodes
+              r={dragIdx === i ? 8 : 6}
               fill="#fff"
-              stroke="rgba(255,255,255,0.2)" // Invisible fat-finger stroke
-              strokeWidth="15" // Massive hit radius for touch
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth="15"
               style={{cursor:'pointer', transition:'r 0.1s'}}
               onDoubleClick={(e) => handleDoubleClick(e, i)}
             />

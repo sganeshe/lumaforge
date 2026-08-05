@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "@mediapipe/tasks-vision": "^0.10.34",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
@@ -17,6 +18,7 @@
     "@vercel/analytics": "^2.0.1",
     "leva": "^0.10.1",
     "piexifjs": "^1.0.6",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-colorful": "^5.6.1",
     "react-dom": "^19.2.0",

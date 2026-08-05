@@ -4,8 +4,6 @@ let segmenter = null;
 
 self.onmessage = async (e) => {
     const { type, imageData } = e.data;
-
-    // 1. INITIALIZE THE NEURAL ENGINE
     if (type === 'INIT') {
         try {
             self.postMessage({ type: 'STATUS', message: '[ DOWNLOADING WASM CORE... ]' });
@@ -18,9 +16,8 @@ self.onmessage = async (e) => {
             
             segmenter = await ImageSegmenter.createFromOptions(vision, {
                 baseOptions: {
-                    // This is a hyper-optimized, quantized model for edge devices
                     modelAssetPath: "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
-                    delegate: "GPU" // Attempts WebGL acceleration if available
+                    delegate: "GPU"
                 },
                 runningMode: "IMAGE",
                 outputCategoryMask: true,
@@ -33,15 +30,12 @@ self.onmessage = async (e) => {
         }
     }
 
-    // 2. RUN INFERENCE ON THE PIXELS
     if (type === 'SEGMENT' && segmenter) {
         try {
             self.postMessage({ type: 'STATUS', message: '[ ISOLATING SUBJECT... ]' });
             
-            // Run the model on the raw ImageData
             const segmentationResult = segmenter.segment(imageData);
             
-            // Returns a 1D array of 0s (background) and 255s (subject)
             const maskArray = segmentationResult.categoryMask.getAsUint8Array();
             
             self.postMessage({ 

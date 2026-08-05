@@ -27,7 +27,7 @@ export const LoginScreen = ({ onBack }) => {
             } else if (authMode === 'OTP') {
                 const res = await supabase.auth.signInWithOtp({ email });
                 error = res.error;
-                if (!error) setMessage({ text: 'MAGIC LINK DEPLOYED. CHECK YOUR INBOX.', type: 'success' });
+                if (!error) setMessage({ text: 'ONE TIME LINK SENT. CHECK YOUR INBOX.', type: 'success' });
             }
         } catch (err) {
             error = err;
@@ -52,18 +52,19 @@ export const LoginScreen = ({ onBack }) => {
         <div className="terminal-page" style={{ alignItems: 'center', justifyContent: 'center' }}>
             
             <div className="login-container">
-                <div className="login-header">
-                    <img src="/lf_orange.png" alt="LUMAFORGE" style={{ height: '35px', objectFit: 'contain', marginBottom: '20px' }} />
-                    <div className="terminal-title" style={{ fontSize: '16px' }}>UPLINK AUTHORIZATION</div>
-                </div>
+                <button className="terminal-back-btn danger" style={{ width: '100%', marginBottom : '1.5rem' }} onClick={onBack}>
+                     ← GO BACK
+                </button>
 
+                <img src="/lf_orange.png" alt="LUMAFORGE" style={{width: '50%', display: 'block', margin: 'auto auto', objectFit: 'contain', marginBottom: '0.5rem' }} />
+                <div className="terminal-title" style={{ fontSize: '16px', textAlign: 'center', marginBottom: '1.5rem' }}>AUTHORIZE HERE</div>
                 <div className="login-tabs">
                     <button className={authMode === 'SIGN_IN' ? 'active' : ''} onClick={() => {setAuthMode('SIGN_IN'); setMessage({text:'', type:''});}}>SIGN IN</button>
                     <button className={authMode === 'SIGN_UP' ? 'active' : ''} onClick={() => {setAuthMode('SIGN_UP'); setMessage({text:'', type:''});}}>REGISTER</button>
-                    <button className={authMode === 'OTP' ? 'active' : ''} onClick={() => {setAuthMode('OTP'); setMessage({text:'', type:''});}}>MAGIC LINK</button>
+                    <button className={authMode === 'OTP' ? 'active' : ''} onClick={() => {setAuthMode('OTP'); setMessage({text:'', type:''});}}>ONE TIME LINK</button>
                 </div>
 
-                <form className="login-form" onSubmit={handleAuth}>
+                <form className="login-form" onSubmit={handleAuth}>       
                     <div className="input-group">
                         <label>USER EMAIL</label>
                         <input 
@@ -78,7 +79,7 @@ export const LoginScreen = ({ onBack }) => {
 
                     {authMode !== 'OTP' && (
                         <div className="input-group">
-                            <label>ENCRYPTION KEY (PASSWORD)</label>
+                            <label>PASSWORD</label>
                             <input 
                                 type="password" 
                                 required 
@@ -91,7 +92,7 @@ export const LoginScreen = ({ onBack }) => {
                     )}
 
                     <button type="submit" className="login-submit-btn" disabled={loading}>
-                        {loading ? 'PROCESSING...' : 'INITIALIZE HANDSHAKE'}
+                        {loading ? 'PROCESSING...' : 'INITIALIZE LOGIN'}
                     </button>
                 </form>
 
@@ -111,10 +112,6 @@ export const LoginScreen = ({ onBack }) => {
                         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                     </svg>
                     AUTHORIZE VIA GOOGLE
-                </button>
-
-                <button className="terminal-back-btn danger" style={{ width: '100%', marginTop: '30px' }} onClick={onBack}>
-                    ← ABORT LOGIN SEQUENCE
                 </button>
             </div>
         </div>

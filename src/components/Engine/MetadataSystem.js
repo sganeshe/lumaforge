@@ -4,7 +4,7 @@
  * invisibly inside PNG files, and extracting EXIF provenance from JPEG files.
  */
 
-import piexif from "piexifjs"; // <-- We need this to read JPEG data
+import piexif from "piexifjs";
 
 const blobToBase64 = (blob) => new Promise((res, rej) => {
     const reader = new FileReader();

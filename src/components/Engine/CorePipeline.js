@@ -10,14 +10,18 @@ import { applyLutToPixel } from './LUTSystem';
 import { generateCurveLUT } from './CurvesMath';
 
 // =========================================================================
-// HSL HELPERS (For Selective Color Targeting)
+// HSL HELPERS
 // =========================================================================
-const rgbToHsl = (r, g, b) => {
+const hslCache = new Float32Array(3); 
+
+const rgbToHslMutable = (r, g, b, out) => {
     r /= 255; g /= 255; b /= 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
     let h, s, l = (max + min) / 2;
-    if (max === min) { h = s = 0; } 
-    else {
+    
+    if (max === min) { 
+        h = s = 0; 
+    } else {
         const d = max - min;
         s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
         switch (max) {
@@ -27,14 +31,18 @@ const rgbToHsl = (r, g, b) => {
         }
         h /= 6;
     }
-    return [h * 360, s * 100, l * 100];
+    out[0] = h * 360; 
+    out[1] = s * 100; 
+    out[2] = l * 100;
 };
 
-const hslToRgb = (h, s, l) => {
+const hslToRgbMutable = (h, s, l, out) => {
     h /= 360; s /= 100; l /= 100;
     let r, g, b;
-    if (s === 0) { r = g = b = l; } 
-    else {
+    
+    if (s === 0) { 
+        r = g = b = l; 
+    } else {
         const hue2rgb = (p, q, t) => {
             if (t < 0) t += 1;
             if (t > 1) t -= 1;
@@ -49,7 +57,9 @@ const hslToRgb = (h, s, l) => {
         g = hue2rgb(p, q, h);
         b = hue2rgb(p, q, h - 1/3);
     }
-    return [r * 255, g * 255, b * 255];
+    out[0] = r * 255; 
+    out[1] = g * 255; 
+    out[2] = b * 255;
 };
 
 // --- FAST SPATIAL BOX BLUR FOR MASKS ---
@@ -116,7 +126,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const resMult = Math.max(1, w / 2000); 
 
                 /* =========================================================================
-                   STAGE 1: HARDWARE-ACCELERATED BASE FILTERS 
+                   STAGE 1: HARDWARE-ACCELERATED BASE FILTERS
                    ========================================================================= */
                 const blurPx = settings.sharpen < 0 ? Math.abs(settings.sharpen) * 0.05 : 0;
                 const scaledBlur = blurPx * resMult;
@@ -171,7 +181,8 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const imgData = ctx.getImageData(0, 0, w, h);
                 const data = imgData.data;
 
-                const clamp = (val) => isNaN(val) ? 0 : Math.max(0, Math.min(255, Math.floor(val)));
+                const fastClamp = (val) => val < 0 ? 0 : val > 255 ? 255 : val | 0;
+                
                 const n = (val) => (val||0) / 100;
                 const nP = (val) => Math.max(0, (val||0) / 100);
 
@@ -182,9 +193,9 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const lutB = generateCurveLUT(sC.blue || [{x:0,y:0},{x:255,y:255}]);
 
                 const applyCurve = (val, channelLUT) => {
-                    const mVal = lutM[clamp(val)];
+                    const mVal = lutM[fastClamp(val)];
                     if (mVal === undefined) return val; 
-                    const cVal = channelLUT[clamp(mVal * 255)];
+                    const cVal = channelLUT[fastClamp(mVal * 255)];
                     return cVal === undefined ? mVal * 255 : cVal * 255;
                 };
 
@@ -209,9 +220,11 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 const isCurveActive = (sC.master?.length > 2) || (sC.red?.length > 2) || (sC.green?.length > 2) || (sC.blue?.length > 2);
                 const isGradingActive = gS.r !== 0 || gS.g !== 0 || gS.b !== 0 || gM.r !== 0 || gM.g !== 0 || gM.b !== 0 || gH.r !== 0 || gH.g !== 0 || gH.b !== 0;
                 
-                const isSelectiveColorActive = (settings.targetHueShift !== undefined && settings.targetHueShift !== 0) || 
-                                               (settings.targetSatShift !== undefined && settings.targetSatShift !== 0) || 
-                                               (settings.targetLumShift !== undefined && settings.targetLumShift !== 0);
+                const isSelectiveColorActive = settings.targetRange > 0 && (
+                    (settings.targetHueShift !== undefined && settings.targetHueShift !== 0) || 
+                    (settings.targetSatShift !== undefined && settings.targetSatShift !== 0) || 
+                    (settings.targetLumShift !== undefined && settings.targetLumShift !== 0)
+                );
                 
                 const needsPixelLoop = settings.activeLut || grainInt > 0 || shadowVal !== 0 || highlightVal !== 0 || whiteVal !== 0 || blackVal !== 0 || isGradingActive || isCurveActive || isSelectiveColorActive;
 
@@ -238,10 +251,14 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                 const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
                                 let newLuma = luma;
 
-                                if (blackVal !== 0) newLuma += blackVal * Math.pow(1 - luma, 4) * 0.4;
-                                if (shadowVal !== 0) newLuma += shadowVal * Math.pow(1 - luma, 2) * luma * 2.5;
-                                if (highlightVal !== 0) newLuma += highlightVal * Math.pow(luma, 2) * (1 - luma) * 2.5;
-                                if (whiteVal !== 0) newLuma += whiteVal * Math.pow(luma, 4) * 0.4;
+                                const lumaInv = 1 - luma;
+                                const lumaInv2 = lumaInv * lumaInv;
+                                const luma2 = luma * luma;
+
+                                if (blackVal !== 0) newLuma += blackVal * (lumaInv2 * lumaInv2) * 0.4;
+                                if (shadowVal !== 0) newLuma += shadowVal * lumaInv2 * luma * 2.5;
+                                if (highlightVal !== 0) newLuma += highlightVal * luma2 * lumaInv * 2.5;
+                                if (whiteVal !== 0) newLuma += whiteVal * (luma2 * luma2) * 0.4;
 
                                 if (luma > 0) {
                                     const ratio = newLuma / luma;
@@ -258,7 +275,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                             }
 
                             if (isGradingActive) {
-                                const gradeLuma = clamp(0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                                const gradeLuma = fastClamp(0.299 * r + 0.587 * g + 0.114 * b) / 255;
                                 
                                 let shadowWeight = Math.max(0, 1.0 - (gradeLuma * 2.0)); 
                                 let highlightWeight = Math.max(0, (gradeLuma - 0.5) * 2.0); 
@@ -272,11 +289,9 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                             // =====================================================================
                             // SELECTIVE COLOR (HSL)
                             // =====================================================================
-                            const isSelectiveColorActive = settings.targetRange > 0 && 
-                                (settings.targetHueShift !== 0 || settings.targetSatShift !== 0 || settings.targetLumShift !== 0);
-
                             if (isSelectiveColorActive) {
-                                let [pHue, pSat, pLum] = rgbToHsl(r, g, b); 
+                                rgbToHslMutable(r, g, b, hslCache); 
+                                let pHue = hslCache[0], pSat = hslCache[1], pLum = hslCache[2];
 
                                 let dist = Math.abs(pHue - (settings.targetHue || 0));
                                 if (dist > 180) dist = 360 - dist;
@@ -302,17 +317,18 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                         pLum += pLum * (lShift / 100);
                                     }
 
-                                    pSat = Math.max(0, Math.min(100, pSat));
-                                    pLum = Math.max(0, Math.min(100, pLum));
+                                    pSat = pSat < 0 ? 0 : pSat > 100 ? 100 : pSat;
+                                    pLum = pLum < 0 ? 0 : pLum > 100 ? 100 : pLum;
 
-                                    const [nr, ng, nb] = hslToRgb(pHue, pSat, pLum);
-                                    r = nr; g = ng; b = nb;
+                                    hslToRgbMutable(pHue, pSat, pLum, hslCache);
+                                    r = hslCache[0]; g = hslCache[1]; b = hslCache[2];
                                 }
                             }
 
                             if (grainInt > 0 && noiseLUT) {
                                 const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255; 
-                                const filmicMask = Math.max(0, 1.0 - Math.pow(Math.abs(luma - 0.5) * 2.0, 2.0)); 
+                                const lumaDist = Math.abs(luma - 0.5) * 2.0;
+                                const filmicMask = Math.max(0, 1.0 - (lumaDist * lumaDist)); 
 
                                 const gx = Math.floor(x / grainScale);
                                 const gy = Math.floor(y / grainScale);
@@ -330,7 +346,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                 r += nVal; g += nVal; b += nVal;
                             }
                             
-                            data[i] = clamp(r); data[i+1] = clamp(g); data[i+2] = clamp(b);
+                            data[i] = fastClamp(r); data[i+1] = fastClamp(g); data[i+2] = fastClamp(b);
                         }
                     }
                     ctx.putImageData(imgData, 0, 0);
@@ -351,6 +367,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
 
                 if (settings.temp > 0) drawOverlay('rgb(255, 140, 0)', settings.temp/200, 'overlay');
                 else if (settings.temp < 0) drawOverlay('rgb(0, 100, 255)', Math.abs(settings.temp)/200, 'overlay');
+                
                 if (settings.tint > 0) drawOverlay('rgb(255, 0, 255)', settings.tint/200, 'overlay');
                 else if (settings.tint < 0) drawOverlay('rgb(0, 255, 0)', Math.abs(settings.tint)/200, 'overlay');
                 
@@ -373,7 +390,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                                 sum += tPx[((y+ky)*w + (x+kx))*4 + c] * kernel[ky+1][kx+1]; 
                             } 
                           } 
-                          sPx[(y*w + x)*4 + c] = clamp(sum); 
+                          sPx[(y*w + x)*4 + c] = fastClamp(sum); 
                         } 
                       } 
                     }
@@ -381,7 +398,7 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 }
 
                 /* =========================================================================
-                   STAGE 5: THE MASTER MASK COMPOSITE (WITH FEATHERING & OVERLAY)
+                   STAGE 5: THE MASTER MASK COMPOSITE
                    ========================================================================= */
                 const hasMask = settings.semanticMask && settings.semanticMask.length > 0;
                 
@@ -412,7 +429,6 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                     const featherAmt = settings.maskFeather !== undefined ? settings.maskFeather : 25; 
 
                     bigMaskCtx.filter = `blur(${featherAmt * resMult}px)`; 
-
                     bigMaskCtx.drawImage(tinyMaskCvs, 0, 0, w, h);
 
                     const smoothMaskData = bigMaskCtx.getImageData(0, 0, w, h).data;
@@ -452,13 +468,13 @@ export const runCorePipeline = async (imageSrc, settings, maxDim = null) => {
                 resolve(canvas);
 
             } catch (error) {
-                console.error("[LUMAFORGE_ENGINE_FAULT] Core Pipeline Crash:", error);
+                console.error("Core Pipeline Crash:", error);
                 reject(error);
             }
         };
 
         img.onerror = (err) => {
-            console.error("[LUMAFORGE_IO_FAULT] Source file failed to decode into Pipeline", err);
+            console.error("Source file failed to decode into Pipeline", err);
             reject(err);
         };
     });

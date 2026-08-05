@@ -61,7 +61,7 @@ export const analyzeAndEnhance = (imageSrc) => {
             const lumaDiff = 120 - avgLuma; 
             if (Math.abs(lumaDiff) > 15) { 
                 // Math.pow ensures a gentle curve instead of a harsh snap
-                suggestedExposure = Math.sign(lumaDiff) * Math.pow(Math.abs(lumaDiff) / 120, 0.8) * 1.5;
+                suggestedExposure = Math.sign(lumaDiff) * Math.pow(Math.abs(lumaDiff) / 120, 0.5) * 1.5;
             }
 
             // 2. SMART CONTRAST
@@ -69,7 +69,7 @@ export const analyzeAndEnhance = (imageSrc) => {
             let suggestedContrast = 0;
             const currentRange = Math.max(1, maxBound - minBound);
             if (currentRange < 210) {
-                suggestedContrast = ((210 - currentRange) / 210) * 20; 
+                suggestedContrast = ((210 - currentRange) / 210) * 10; 
             }
 
             // 3. SMART WHITE BALANCE (Protect Golden Hour)
@@ -77,14 +77,14 @@ export const analyzeAndEnhance = (imageSrc) => {
             let suggestedTemp = 0;
             const tempDiff = avgB - avgR;
             if (Math.abs(tempDiff) > 20) { 
-                suggestedTemp = Math.sign(tempDiff) * Math.pow(Math.abs(tempDiff) / 128, 0.8) * 20;
+                suggestedTemp = Math.sign(tempDiff) * Math.pow(Math.abs(tempDiff) / 128, 0.5) * 10;
             }
 
             let suggestedTint = 0;
             const avgRB = (avgR + avgB) / 2;
             const tintDiff = avgG - avgRB;
             if (Math.abs(tintDiff) > 15) {
-                suggestedTint = Math.sign(tintDiff) * Math.pow(Math.abs(tintDiff) / 128, 0.8) * 20;
+                suggestedTint = Math.sign(tintDiff) * Math.pow(Math.abs(tintDiff) / 128, 0.5) * 10;
             }
 
             // 4. AMBIANCE (Shadows/Highlights)

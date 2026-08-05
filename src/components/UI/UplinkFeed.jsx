@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-// --- NEW: Import your LUT generator ---
 import { generateLutFile } from '../Engine/LUTSystem';
 
 export const UplinkFeed = ({ onBack, onFork, session }) => {
@@ -9,15 +8,12 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
     const [pendingSettings, setPendingSettings] = useState(null);
     const fileInputRef = useRef(null);
     
-    // Sorting State
-    const [sortBy, setSortBy] = useState('latest'); // 'latest', 'popular', 'oldest'
+    const [sortBy, setSortBy] = useState('latest');
 
-    // Re-fetch whenever the sortBy state changes
     useEffect(() => {
         fetchFeed(sortBy);
     }, [sortBy]);
 
-    // Dynamic Supabase Query Builder
     const fetchFeed = async (currentSort) => {
         setLoading(true);
         
@@ -38,7 +34,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
     };
 
     const handleLike = async (post) => {
-        if (!session) return alert("UPLINK ERROR: Login required to upvote.");
+        if (!session) return alert("Login required to upvote.");
         
         const userId = session.user.id;
         const hasLiked = post.upvoted_by && post.upvoted_by.includes(userId);
@@ -76,34 +72,27 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
         e.target.value = null; 
     };
 
-    // --- NEW: DOWNLOAD AS .CUBE LUT ---
     const handleDownloadCube = (e, post) => {
         e.stopPropagation();
         try {
-            // Parse settings safely
             const parsedSettings = typeof post.settings === 'string' 
                 ? JSON.parse(post.settings) 
                 : post.settings;
-
-            // Generate LUT content using your engine math
             const content = generateLutFile(parsedSettings);
             
-            // Trigger browser download
             const blob = new Blob([content], { type: 'text/plain' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
             
-            // Format a clean filename
             const cleanName = (post.preset_name || 'untitled').replace(/[^a-z0-9]/gi, '_').toLowerCase();
             link.download = `lumaforge_${cleanName}.cube`;
             link.click();
         } catch (err) {
             console.error("Failed to generate LUT:", err);
-            alert("ERROR: Could not compile mathematical data into a .cube file.");
+            alert("ERROR: Could not compile data into a .cube file.");
         }
     };
 
-    // --- BULLETPROOF SHARE LINK GENERATOR ---
     const handleCopyLink = async (e, id) => {
         e.preventDefault();
         e.stopPropagation(); 
@@ -149,15 +138,13 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
             />
 
             <div className="terminal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <button onClick={onBack} className="terminal-back-btn">← TERMINATE UPLINK</button>
-                <div className="terminal-title">THE_UPLINK_v1.1 (COMMUNITY_FEED)</div>
+                <button onClick={onBack} className="terminal-back-btn">← GO BACK</button>
+                <div className="terminal-title">COMMUNITY_FEED</div>
             </div>
 
             <div className="terminal-content" style={{ padding: '20px', paddingBottom: '100px', maxWidth: '1200px', margin: '0 auto' }}>
-                
-                {/* Filter UI Toolbar */}
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '1px solid #333', paddingBottom: '15px', alignItems: 'center' }}>
-                    <span style={{ color: '#666', fontSize: '12px', marginRight: '10px', fontFamily: 'var(--font-mono)' }}>SORT DATA STREAM:</span>
+                    <span style={{ color: '#666', fontSize: '12px', marginRight: '10px', fontFamily: 'var(--font-mono)' }}>SORT:</span>
                     
                     {['latest', 'popular', 'oldest'].map(mode => (
                         <button
@@ -184,7 +171,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                 </div>
 
                 {loading ? (
-                    <div className="typewriter-text">SYNCING WITH GLOBAL MAINFRAME...</div>
+                    <div className="typewriter-text">SYNCING WITH CLOUD...</div>
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                         {posts.map(post => {
@@ -213,14 +200,14 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                                                     fontWeight: 'bold',
                                                     color: 'var(--amber)',
                                                     background: 'rgba(0, 0, 0, 0.75)',
-                                                    border: '1px solid var(--amber)',
+                                                    border: '#ffb800 1px solid',
                                                     borderRadius: '4px',
                                                     backdropFilter: 'blur(4px)',
                                                     cursor: 'pointer',
                                                     fontFamily: 'var(--font-mono)'
                                                 }}
                                             >
-                                                FORK & REMIX
+                                                APPLY GRADE
                                             </button>
                                         </div>
                                     </div>
@@ -236,10 +223,7 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                                                 </div>
                                             </div>
                                             
-                                            {/* ACTION BUTTONS */}
                                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                                
-                                                {/* DOWNLOAD LUT BUTTON */}
                                                 <button 
                                                     onClick={(e) => handleDownloadCube(e, post)}
                                                     title="Download .cube LUT"
@@ -266,8 +250,6 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                                                         <line x1="12" y1="15" x2="12" y2="3"></line>
                                                     </svg>
                                                 </button>
-
-                                                {/* SHARE BUTTON */}
                                                 <button 
                                                     onClick={(e) => handleCopyLink(e, post.id)}
                                                     title="Copy Share Link"
@@ -294,7 +276,6 @@ export const UplinkFeed = ({ onBack, onFork, session }) => {
                                                     </svg>
                                                 </button>
 
-                                                {/* UPVOTE BUTTON */}
                                                 <button 
                                                     onClick={() => handleLike(post)}
                                                     title="Upvote"

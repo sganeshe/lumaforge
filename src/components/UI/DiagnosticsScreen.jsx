@@ -27,15 +27,15 @@ export const DiagnosticsScreen = ({ onBack, session, appPrefs, setAppPrefs, onSi
     return (
         <div className="terminal-page green-theme">
             <div className="terminal-header">
-                <button onClick={onBack} className="terminal-back-btn">← TERMINATE DIAGNOSTICS</button>
-                <div className="terminal-title">SYS_DIAGNOSTICS</div>
+                <button onClick={onBack} className="terminal-back-btn">← GO BACK</button>
+                <div className="terminal-title">SETTINGS_&_INFO</div>
             </div>
 
             <div className="terminal-content">
                 <div className="diag-grid">
                     
                     <div className="diag-panel">
-                        <h3>NETWORK UPLINK</h3>
+                        <h3>AUTHORIZE ACCOUNT</h3>
                         {session ? (
                             <>
                                 <div className="diag-row"><span>USER ID:</span> <span>{session.user.id.slice(0, 8)}...</span></div>
@@ -55,18 +55,18 @@ export const DiagnosticsScreen = ({ onBack, session, appPrefs, setAppPrefs, onSi
                                     style={{ marginTop: '25px', width: '100%', borderColor: '#f00', color: '#f00' }} 
                                     onClick={handleSignOut}
                                 >
-                                    TERMINATE UPLINK (SIGN OUT)
+                                    SIGN OUT
                                 </button>
                             </>
                         ) : (
                             <div style={{ marginTop: '20px' }}>
-                                <div style={{ color: '#888', marginBottom: '20px' }}>UPLINK OFFLINE. NO SESSION DETECTED.</div>
+                                <div style={{ color: '#888', marginBottom: '20px' }}>SESSION OFFLINE.</div>
                                 <button 
                                     className="diag-toggle" 
                                     style={{ width: '100%', borderColor: '#0f0', color: '#0f0' }} 
                                     onClick={onSignIn}
                                 >
-                                    INITIALIZE UPLINK (SIGN IN)
+                                    SIGN IN
                                 </button>
                             </div>
                         )}

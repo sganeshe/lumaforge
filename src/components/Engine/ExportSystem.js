@@ -158,7 +158,6 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg', session =
 
   let exportCanvas = finalCanvas;
   
-  // If it is a PNG, we apply the compression factor to physically shrink the canvas matrix
   if (isPNG && compressionFactor > 0 && compressionFactor < 1.0) {
       console.log(`[LUMAFORGE_EXPORT] Compressing PNG matrix by ${Math.round((1 - compressionFactor) * 100)}%...`);
       
@@ -168,7 +167,7 @@ export const exportImage = async (imageSrc, settings, format = 'jpeg', session =
       
       const compCtx = compressedCanvas.getContext('2d');
       compCtx.imageSmoothingEnabled = true;
-      compCtx.imageSmoothingQuality = 'high'; // Ensures the downscale remains sharp
+      compCtx.imageSmoothingQuality = 'high';
       
       compCtx.drawImage(finalCanvas, 0, 0, compressedCanvas.width, compressedCanvas.height);
       exportCanvas = compressedCanvas;

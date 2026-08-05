@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback, useRef, useDeferredValue } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 
-// Engine & Core Systems
+// Backend Logics
 import ImageStage from './components/Engine/ImageStage';
 import { exportImage } from './components/Engine/ExportSystem';
 import { generateLutFile, parseLutFile } from './components/Engine/LUTSystem';
@@ -32,11 +32,9 @@ import './styles/index.css';
    ROUTING WRAPPERS & PRESENTATIONAL VIEWS
    ========================================================================= */
 
-// The Boot Screen now intercepts routing requests and forwards them
 const BootScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  // If a target is passed in the router state, go there. Otherwise, go home.
   const targetPath = location.state?.target || '/';
 
   useEffect(() => { 
@@ -62,16 +60,78 @@ const HomeScreen = ({ onUpload }) => {
       navigate('/boot', { state: { target: path } });
   };
 
+  // ==========================================
+  // --- TYPEWRITER ENGINE ---
+  // ==========================================
+  const [typeText, setTypeText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [loopNum, setLoopNum] = useState(0);
+  
+  const phrases = [
+      "EASY_EXPORT", 
+      "SIMPLE_INTERFACE", 
+      "AI_ASSISTED_GRADING", 
+      "REALTIME_PREVIEW",
+      "CLOUD_SYNC",
+      "SHAREABLE_PRESETS",
+      "CUSTOM_LUTS",
+      "PROFESSIONAL_OPTICS"
+  ];
+
+  useEffect(() => {
+      let ticker = setTimeout(() => {
+          const i = loopNum % phrases.length;
+          const fullText = phrases[i];
+
+          if (isDeleting) {
+              setTypeText(fullText.substring(0, typeText.length - 1));
+          } else {
+              setTypeText(fullText.substring(0, typeText.length + 1));
+          }
+
+          let typeSpeed = isDeleting ? 30 : 70;
+
+          if (!isDeleting && typeText === fullText) {
+              typeSpeed = 2000;
+              setIsDeleting(true);
+          } else if (isDeleting && typeText === '') {
+              setIsDeleting(false);
+              setLoopNum(loopNum + 1);
+              typeSpeed = 500;
+          }
+
+          return () => clearTimeout(ticker);
+      }, isDeleting ? 30 : 70);
+
+      return () => clearTimeout(ticker);
+  }, [typeText, isDeleting, loopNum]);
+
+
   return (
     <div className="home-layer">
       <div className="home-grid" />
       <div className="hero-content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
-        
-        <div className="system-status" style={{ marginBottom: '10px', background: 'rgba(255, 184, 0, 0.05)', border: '1px solid rgba(255, 184, 0, 0.2)', padding: '6px 12px', borderRadius: '4px' }}>
-            <div className="status-dot"/>
-            SYSTEM_READY 
+
+        <div className="system-status" style={{ marginBottom: '10px', background: 'rgba(255, 184, 0, 0.05)', border: '1px solid rgba(255, 184, 0, 0.2)', padding: '6px 12px', borderRadius: '4px', display: 'flex', alignItems: 'center' }}>
+            <div className="status-dot" style={{ marginRight: '8px' }}/>
+            <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--amber, #ffb800)' }}>
+                {typeText}
+            </span>
+            <span style={{ 
+                fontFamily: 'monospace', 
+                color: 'var(--amber, #ffb800)', 
+                animation: 'blink 1s step-end infinite' 
+            }}>
+                _
+            </span>
             <span style={{ margin: '0 12px', opacity: 0.3, color: '#fff' }}>|</span> 
-            <span style={{ color: 'var(--text-muted)' }}>{timeStr}</span>
+            <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{timeStr}</span>
+            <style>{`
+                @keyframes blink {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0; }
+                }
+            `}</style>
         </div>
 
         <div className="hero-block" style={{ margin: '0', animation: 'lens-focus 1.5s cubic-bezier(0.19, 1, 0.22, 1) backwards' }}>
@@ -90,29 +150,26 @@ const HomeScreen = ({ onUpload }) => {
         <input id="home-upload" type="file" hidden onChange={onUpload} accept="image/*,.cube" />
 
         <div className="home-nav-links" style={{ display: 'flex', gap: '20px', marginTop: '30px', animation: 'fade-up 1s ease-out 0.6s backwards' }}>
-          <button className="text-nav-btn" onClick={() => handleNavigate('/uplink')}>[ THE UPLINK FEED ]</button>
-          <button className="text-nav-btn" onClick={() => handleNavigate('/diagnostics')}>[ SYSTEM DIAGNOSTICS ]</button>
-          <button className="text-nav-btn" onClick={() => handleNavigate('/manual')}>[ OPTICS MANUAL ]</button>
+          <button className="text-nav-btn" onClick={() => handleNavigate('/uplink')}>[ COMMUNITY FEED ]</button>
+          <button className="text-nav-btn" onClick={() => handleNavigate('/manual')}>[ CREATOR MANUAL ]</button>
+          <button className="text-nav-btn" onClick={() => handleNavigate('/diagnostics')}>[ SETTINGS & INFO ]</button>
         </div>
 
       </div>
 
       <div className="home-footer">
-        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.4.0</span></div>
         <div className="footer-row links">
-           <span style={{color: '#fff'}}>CREATOR: SAUMYA GANESHE</span>
-           <a href="https://github.com/sganeshe" target="_blank" rel="noreferrer">[ GITHUB ]</a>
-           <a href="https://www.linkedin.com/in/saumyaganeshe/" target="_blank" rel="noreferrer">[ LINKEDIN ]</a>
-           <a href="https://sganeshe.live/" target="_blank" rel="noreferrer">[ PORTFOLIO ]</a>
+           <span style={{color: '#fff'}}>SUPPORT THE CAUSE:</span>
+           <a href="https://github.com/sponsors/sganeshe/" target="_blank" rel="noreferrer"> [ DONATE HERE ] </a>
+           <a href="https://www.linkedin.com/company/lumaforge/" target="_blank" rel="noreferrer">[ LINKEDIN ]</a>
+           <a href="https://www.instagram.com/lumaforgeoptics/" target="_blank" rel="noreferrer">[ INSTAGRAM ]</a>
         </div>
+        <div className="footer-row"><span>© 2026 LUMAFORGE</span><span className="footer-divider">|</span><span>BUILD v1.4.0</span></div>
       </div>
     </div>
   );
 };
 
-/* =========================================================================
-   NEW: SHARED PRESET LANDING PAGE
-   ========================================================================= */
 const SharedPresetPage = ({ onFork, onCancel }) => {
   const { id } = useParams();
   const [preset, setPreset] = useState(null);
@@ -160,13 +217,13 @@ const SharedPresetPage = ({ onFork, onCancel }) => {
               {error ? (
                   <>
                       <div className="status-label" style={{ color: '#ff3333' }}>[ {error} ]</div>
-                      <button className="text-nav-btn" onClick={onCancel}>[ RETURN TO MAINFRAME ]</button>
+                      <button className="text-nav-btn" onClick={onCancel}>[ RETURN TO MAIN MENU ]</button>
                   </>
               ) : (
                   <>
                       <div className="system-status" style={{ background: 'rgba(0, 255, 150, 0.05)', border: '1px solid rgba(0, 255, 150, 0.2)' }}>
                           <div className="status-dot" style={{ background: '#00ff96', boxShadow: '0 0 8px #00ff96' }}/>
-                          INCOMING TRANSMISSION
+                          INCOMING GRADE PRESET
                       </div>
 
                       <h2 style={{ color: '#fff', fontSize: '24px', fontFamily: 'var(--font-ui)', letterSpacing: '2px', textAlign: 'center', margin: 0 }}>
@@ -174,7 +231,7 @@ const SharedPresetPage = ({ onFork, onCancel }) => {
                       </h2>
                       
                       <p style={{ color: '#888', fontSize: '12px', fontFamily: 'monospace', maxWidth: '400px', textAlign: 'center', lineHeight: '1.6' }}>
-                          A creator has shared an optics preset with you. Upload an image to preview and apply this grade.
+                          A creator has shared a grading preset with you. Upload an image to preview and apply this grade.
                       </p>
 
                       <div className="start-btn-group" style={{ marginTop: '20px' }}>
@@ -194,16 +251,10 @@ const SharedPresetPage = ({ onFork, onCancel }) => {
   );
 };
 
-
-/* =========================================================================
-   INTERNAL APP STATE CONTROLLER
-   ========================================================================= */
-
 const LumaforgeCore = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Core State
   const [session, setSession] = useState(null);
   const [appPrefs, setAppPrefs] = useState({ animations: true });
   const [showCloud, setShowCloud] = useState(false);
@@ -226,14 +277,12 @@ const LumaforgeCore = () => {
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
-  // Auth Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => subscription.unsubscribe();
   }, []);
 
-  // Keyboard Shortcuts (Only active if in Editor)
   const undo = useCallback(() => {
     setHistory(curr => {
         if (curr.past.length === 0) return curr;
@@ -266,7 +315,6 @@ const LumaforgeCore = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, location.pathname]);
 
-  // File Processing
   const pushToHistory = useCallback(() => {
     const currentState = structuredClone(settingsRef.current); 
     setHistory(curr => {
@@ -300,14 +348,14 @@ const LumaforgeCore = () => {
               const rawMeta = await readMetadata(file); 
               projectData = typeof rawMeta === 'string' ? JSON.parse(rawMeta) : rawMeta;
           } catch (err) { 
-              console.warn("[LUMAFORGE_META] No readable payload found."); 
+              console.warn("No readable payload found."); 
           }
       }
 
       let nextImage = visualUrl;
       let savedSettings = null;
 
-      if (projectData && window.confirm("LUMAFORGE Project Detected.\n[OK] Restore Edits\n[Cancel] Import Clean")) {
+      if (projectData && window.confirm("LUMAFORGE Project Detected.\n[OK] Restore Edits\n[Cancel] Import RAW Image")) {
           savedSettings = projectData.settings || projectData;
           if (typeof savedSettings === 'string') {
               try { savedSettings = JSON.parse(savedSettings); } catch(e) {}
@@ -385,10 +433,10 @@ const LumaforgeCore = () => {
   };
 
   const handleSaveToCloud = async () => {
-      if (!session) return alert("UPLINK OFFLINE. Please connect to the Uplink (Login) to save presets.");
+      if (!session) return alert("Please log in to save presets.");
       const { count } = await supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', session.user.id);
       if (count >= 50) {
-          alert("CRITICAL: UPLINK CAPACITY REACHED (50/50). Please delete old presets to save new ones.");
+          alert("CRITICAL: CLOUD CAPACITY REACHED (50/50). Please delete old presets to save new ones.");
           return;
       }
       const name = prompt("NAME YOUR PRESET:");
@@ -502,16 +550,12 @@ const LumaforgeCore = () => {
           )
         } />
         
-        {/* Catch-All 404 Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
 };
 
-/* =========================================================================
-   ROUTER WRAPPER
-   ========================================================================= */
 export default function App() {
   return (
     <Router>

@@ -6,14 +6,10 @@ import { analyzeAndEnhance } from '../Engine/AutoEnhance';
 import { supabase } from '../../lib/supabaseClient';
 import { runCorePipeline } from '../Engine/CorePipeline';
 
-// =========================================================================
-// UPLINK BROWSER COMPONENT (WITH PERFECT HOVER PREVIEW)
-// =========================================================================
 const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session }) => {
     const [feed, setFeed] = useState([]);
     const [loading, setLoading] = useState(true);
     
-    // Hover Preview State
     const [hoveredPreset, setHoveredPreset] = useState(null);
     const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
     const [perfectPreviewUrl, setPerfectPreviewUrl] = useState(null);
@@ -31,7 +27,7 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
                     setFeed(data);
                 }
             } catch (err) {
-                console.error("[LUMAFORGE_NETWORK_FAULT] Failed to fetch Uplink Feed", err);
+                console.error("Failed to fetch Uplink Feed", err);
             } finally {
                 setLoading(false);
             }
@@ -39,7 +35,6 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
         loadFeed();
     }, []);
 
-    // --- NEW: ASYNC PERFECT PREVIEW GENERATOR ---
     useEffect(() => {
         let isMounted = true;
 
@@ -54,14 +49,13 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
                     ? JSON.parse(hoveredPreset.settings) 
                     : hoveredPreset.settings;
 
-                // Run the actual engine, but cap the size at 300px so it processes in ~15ms
                 const renderedCanvas = await runCorePipeline(image, parsedSettings, 300);
                 
                 if (isMounted) {
                     setPerfectPreviewUrl(renderedCanvas.toDataURL('image/jpeg', 0.8));
                 }
             } catch (err) {
-                console.warn("[LUMAFORGE_PREVIEW_FAULT] Failed to generate exact preview", err);
+                console.warn("Failed to generate exact preview", err);
             }
         };
 
@@ -93,7 +87,6 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
         });
     };
 
-    // --- HANDLE COPY SHARE LINK ---
     const handleCopyLink = (e, id) => {
         e.stopPropagation(); 
         const link = `${window.location.origin}/share/${id}`;
@@ -101,10 +94,9 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
         alert("SHARE LINK COPIED TO CLIPBOARD!");
     };
 
-    // --- DEPLOY TO UPLINK LOGIC ---
     const handleDeployToUplink = async () => {
         if (!session) {
-            alert("AUTHENTICATION REQUIRED: Please log in to deploy to the Uplink network.");
+            alert("AUTHENTICATION REQUIRED: Please log in to deploy to the Community Feed.");
             return;
         }
 
@@ -112,7 +104,7 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
         if (!presetName) return; 
 
         try {
-            console.log("[UPLINK] Rendering visual snapshot...");
+            console.log("Rendering visual snapshot...");
 
             const thumbCanvas = await runCorePipeline(image, settings, 400);
             const blob = await new Promise(resolve => thumbCanvas.toBlob(resolve, 'image/jpeg', 0.8));
@@ -152,19 +144,18 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
 
             if (dbError) throw dbError;
             
-            console.log("[UPLINK] Deployment successful.");
-            alert("PRESET DEPLOYED TO THE GLOBAL NETWORK!");
+            console.log("Deployment successful.");
+            alert("PRESET DEPLOYED TO THE COMMUNITY FEED!");
             
             const { data } = await supabase.from('uplink_posts').select('*').order('created_at', { ascending: false }).limit(50);
             if (data) setFeed(data);
 
         } catch (err) {
-            console.error("[UPLINK_FAULT] Database insertion failed:", err);
+            console.error("Database insertion failed:", err);
             alert(`DEPLOYMENT FAILED: ${err.message}`);
         }
     };
 
-    // We keep this as an instant visual fallback for the 15ms it takes the engine to boot
     const getApproximateCss = (s) => {
         if (!s) return 'none';
         const parsed = typeof s === 'string' ? JSON.parse(s) : s;
@@ -222,8 +213,7 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
                                     NET_ID: {item.id.substring(0, 8)}
                                 </span>
                             </div>
-                            
-                            {/* NEW: WRAPPER FOR SHARE & APPLY BUTTONS */}
+
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <button 
                                     className="btn-tech" 
@@ -253,7 +243,6 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
                 </div>
             )}
 
-            {/* FLOATING SPLIT-SCREEN HOVER PREVIEW */}
             {hoveredPreset && image && (
                 <div style={{
                     position: 'fixed',
@@ -270,12 +259,10 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
                     pointerEvents: 'none',
                     animation: 'fade-up 0.2s ease-out'
                 }}>
-                    {/* ORIGINAL (LEFT HALF) */}
                     <div style={{ position: 'absolute', inset: 0, clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)' }}>
                         <img src={image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Original" />
                     </div>
                     
-                    {/* EDITED (RIGHT HALF) */}
                     <div style={{ position: 'absolute', inset: 0, clipPath: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)' }}>
                         {perfectPreviewUrl ? (
                             <img 
@@ -295,7 +282,6 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
                         )}
                     </div>
 
-                    {/* DIVIDER LINE & BADGES */}
                     <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '2px', backgroundColor: 'var(--amber)' }} />
                     <div style={{ position: 'absolute', bottom: 5, left: 5, fontSize: 9, background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>ORIGINAL</div>
                     <div style={{ position: 'absolute', bottom: 5, right: 5, fontSize: 9, background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>PREVIEW</div>
@@ -314,10 +300,6 @@ const UplinkBrowser = memo(({ setSettings, onSnapshot, image, settings, session 
         </div>
     );
 });
-
-// =========================================================================
-// EXISTING UI COMPONENTS
-// =========================================================================
 
 const Histogram = memo(({ imageSrc, exposure, contrast, whites, blacks, shadows, highlights }) => {
     const canvasRef = useRef(null);
@@ -507,7 +489,6 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
 
     return (
         <div style={{ position: 'relative', marginTop: 5 }}>
-            {/* 1. ORIGINAL 40x40 SWATCH */}
             <div 
                 style={{
                     width: 40, 
@@ -524,7 +505,6 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
                 }}
             />
 
-            {/* 2. THE DROPDOWN MENU */}
             {isOpen && (
                 <div 
                     ref={popoverRef}
@@ -547,11 +527,8 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
                         color={localColor} 
                         onChange={handleLiveChange} 
                     />
-                    
-                    {/* The Hex & Eyedropper Toolbar */}
+
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        
-                        {/* WRAPPER FOR THE INPUT + HASHTAG */}
                         <div style={{ 
                             flex: 1, 
                             display: 'flex', 
@@ -562,12 +539,10 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
                             padding: '0 8px',
                             transition: 'border-color 0.2s ease'
                         }}>
-                            {/* STATIC HASHTAG */}
                             <span style={{ color: '#666', fontFamily: 'var(--font-mono, monospace)', fontSize: '11px' }}>
                                 #
                             </span>
                             
-                            {/* TEXT INPUT (Numbers/Letters only) */}
                             <input 
                                 type="text" 
                                 value={hexInput}
@@ -577,7 +552,7 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
                                     flex: 1, 
                                     background: 'transparent', 
                                     border: 'none',
-                                    color: isInputValid ? 'var(--accent, #fff)' : '#ff3333', // Turns red if invalid
+                                    color: isInputValid ? 'var(--accent, #fff)' : '#ff3333',
                                     padding: '6px 4px', 
                                     fontFamily: 'var(--font-mono, monospace)', 
                                     fontSize: '11px', 
@@ -604,7 +579,6 @@ const SmartColorPicker = memo(({ value, onChange, onSnapshot }) => {
                         </button>
                     </div>
 
-                    {/* Hidden Safari Fallback */}
                     <input 
                         type="color" 
                         ref={fallbackInputRef}
@@ -659,13 +633,9 @@ const GradeControl = memo(({ label, tone, settings, setSettings, onSnapshot }) =
     );
 });
 
-// =========================================================================
-// NEW: SELECTIVE COLOR (HSL) PANEL
-// =========================================================================
 const SelectiveColorControl = memo(({ settings, setSettings, onSnapshot }) => {
     const update = (key, val) => setSettings(p => ({ ...p, [key]: val }));
 
-    // Save state for undo/redo before dragging the hue spectrum
     const handleHueMouseDown = () => { if (onSnapshot) onSnapshot(); };
 
     return (
@@ -677,17 +647,14 @@ const SelectiveColorControl = memo(({ settings, setSettings, onSnapshot }) => {
                 <span className="control-val">{settings.targetHue || 0}°</span>
             </div>
 
-            {/* LIGHTROOM-STYLE CONTINUOUS HUE SPECTRUM */}
             <div style={{
                 position: 'relative',
                 height: '24px',
                 borderRadius: '6px',
                 marginBottom: '20px',
-                // Mathematically perfect 360-degree color wheel gradient
                 background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)',
                 boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.1)'
             }}>
-                {/* Invisible native range input for perfect interaction handling */}
                 <input
                     type="range" min="0" max="360"
                     value={settings.targetHue || 0}
@@ -699,7 +666,6 @@ const SelectiveColorControl = memo(({ settings, setSettings, onSnapshot }) => {
                     }}
                 />
                 
-                {/* Custom Visual Thumb */}
                 <div style={{
                     position: 'absolute',
                     top: '-3px', bottom: '-3px',
@@ -940,7 +906,7 @@ const EditorControls = ({ activeTab, setActiveTab, settings, setSettings, onSnap
           </div>
         )}
 
-        {/* 7. NEW UPLINK PANEL */}
+        {/* 7. COMMUNITY FEED */}
         {activeTab === 'UPLINK' && (
             <UplinkBrowser setSettings={setSettings} onSnapshot={onSnapshot} image={image} settings={settings} session={session} />
         )}

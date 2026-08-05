@@ -104,8 +104,7 @@ const MaskingEditor = ({ sourceImageData, settings, setSettings }) => {
                 >
                     ISOLATE SUBJECT
                 </button>
-
-                {/* --- DYNAMIC OVERLAY BUTTON --- */}
+                    
                 <button 
                     className={`btn-tech ${settings.showMaskOverlay ? 'active' : ''}`}
                     disabled={!settings.semanticMask}

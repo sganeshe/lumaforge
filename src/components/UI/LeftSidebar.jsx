@@ -15,11 +15,9 @@ export const LeftSidebar = ({
     const [activeTab, setActiveTab] = useState('LOCAL');
     const [exportFormat, setExportFormat] = useState('jpeg');
     
-    // Cloud State
     const [presets, setPresets] = useState([]);
     const [isLoadingPresets, setIsLoadingPresets] = useState(false);
 
-    // Fetch presets when CLOUD tab is clicked and user is logged in
     useEffect(() => {
         if (activeTab === 'CLOUD' && session) {
             fetchPresets();
@@ -38,7 +36,7 @@ export const LeftSidebar = ({
             if (error) throw error;
             setPresets(data || []);
         } catch (error) {
-            console.error("[LUMAFORGE_UPLINK] Failed to sync presets:", error.message);
+            console.error("Failed to sync presets:", error.message);
         } finally {
             setIsLoadingPresets(false);
         }
@@ -47,21 +45,20 @@ export const LeftSidebar = ({
     const handleLoad = (preset) => {
         if (window.confirm(`Initialize preset "${preset.name}"? Unsaved local changes will be lost.`)) {
             onLoadPreset(preset.settings);
-            setIsMenuOpen(false); // Auto-close drawer on mobile
+            setIsMenuOpen(false);
         }
     };
 
     const handleDelete = async (e, id) => {
-        e.stopPropagation(); // Prevent the preset from loading when clicking delete
-        if (window.confirm("Permanently delete this preset from the Uplink?")) {
+        e.stopPropagation();
+        if (window.confirm("Permanently delete this preset from the Feed?")) {
             await supabase.from('projects').delete().eq('id', id);
-            fetchPresets(); // Refresh the list
+            fetchPresets();
         }
     };
 
     return (
         <div className={`left-sidebar ${isMenuOpen ? 'menu-open' : ''}`}>
-            {/* TOP BAR / HEADER */}
             <div className="sidebar-header">
                 <button className="nav-btn shell-btn" onClick={onHome}>← SHELL</button>
                 <div className="logo-container">
@@ -69,13 +66,11 @@ export const LeftSidebar = ({
                     <span className="version-tag">v1.4.0</span>
                 </div>
                 
-                {/* HAMBURGER TOGGLE */}
                 <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(!isMenuOpen)}>
                     {isMenuOpen ? '✕ CLOSE' : '☰ MENU'}
                 </button>
             </div>
 
-            {/* DRAWER CONTENT */}
             <div className="sidebar-content">
                 <div className="sidebar-tabs">
                     <button className={activeTab === 'CLOUD' ? 'active' : ''} onClick={() => setActiveTab('CLOUD')}>CLOUD</button>
@@ -88,14 +83,14 @@ export const LeftSidebar = ({
                             {!session ? (
                                 <>
                                     <div className="status-label">OFFLINE MODE</div>
-                                    <button className="primary-btn" onClick={setShowAuth}>CONNECT UPLINK</button>
+                                    <button className="primary-btn" onClick={setShowAuth}>CONNECT TO CLOUD</button>
                                 </>
                             ) : (
                                 <>
-                                    <div className="status-label" style={{color: '#00ff00'}}>UPLINK ACTIVE</div>
+                                    <div className="status-label" style={{color: '#00ff00'}}>CLOUD ACTIVE</div>
                                     <button className="primary-btn" onClick={() => { 
                                         onSaveToCloud(); 
-                                        setTimeout(fetchPresets, 2000); // Auto-refresh list after saving
+                                        setTimeout(fetchPresets, 2000);
                                     }}>
                                         SAVE PRESET TO CLOUD
                                     </button>
@@ -133,7 +128,6 @@ export const LeftSidebar = ({
                     )}
                 </div>
 
-                {/* FOOTER: EXPORT CONTROLS */}
                 <div className="sidebar-footer">
                     <div className="format-toggles">
                         <button className={exportFormat === 'jpeg' ? 'active' : ''} onClick={() => setExportFormat('jpeg')}>.JPEG</button>
