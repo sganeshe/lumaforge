@@ -44,4 +44,6 @@ Please format your commit messages clearly to maintain an organized and readable
 * `docs: [Description]` - For updates to documentation or code comments.
 
 ---
-*Thank you for helping build the future of browser-based optics!*
+
+*Thank you for helping build the future of browser-based optics!* [✉️ Contact Support](mailto:hello@lumaforgeoptics.in)
+
